@@ -1,0 +1,15 @@
+# embedding model + vector index (regenerate with: python search_app.py --rebuild)
+embeddings/
+
+# large dataset snapshots kept locally
+combined_dataset_original_backup.csv
+combined_dataset_before_regeneration.csv
+combined_dataset_before_generation.csv
+
+# run logs
+*.log
+
+# python / editor noise
+__pycache__/
+*.pyc
+.idea/
