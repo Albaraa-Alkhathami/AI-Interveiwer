@@ -143,10 +143,18 @@ class Embedder:
 
 
 def fingerprint(path: Path) -> str:
+    """Hash only the fields that get embedded.
+
+    Hashing the whole file means editing an answer throws away a valid index and
+    spends ~10 minutes re-embedding identical texts; this keeps the cache alive
+    across answer-only updates while still invalidating on any question, subject
+    or ordering change.
+    """
     h = hashlib.sha1()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
+    with open(path, encoding="utf-8-sig", newline="") as fh:
+        for row in csv.DictReader(fh):
+            text = f"{row['subject']}. {row['question']}"
+            h.update(" ".join(text.split()).encode("utf-8") + b"\n")
     return h.hexdigest()
 
 
@@ -157,7 +165,7 @@ def cache_paths():
 
 def build_index(rows: list[dict], rebuild: bool = False) -> np.ndarray:
     npy, meta_file = cache_paths()
-    meta = {"model": MODEL_NAME, "rows": len(rows), "csv_sha1": fingerprint(CSV_PATH)}
+    meta = {"model": MODEL_NAME, "rows": len(rows), "text_sha1": fingerprint(CSV_PATH)}
 
     if not rebuild and npy.exists() and meta_file.exists():
         if json.loads(meta_file.read_text(encoding="utf-8")) == meta:

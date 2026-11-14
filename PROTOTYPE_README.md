@@ -66,6 +66,38 @@ Query: 'why does my vue component re-render so much'   [subject~'Vue.js']
    A: I start by measuring rather than guessing, using the Vue devtools...
 ```
 
+## Maintenance scripts
+
+```bash
+# mask assistant chatter, filler and stray markdown in stored answers
+# (dry run by default; --apply writes a backup first)
+python clean_answers.py
+python clean_answers.py --apply
+
+# rewrite templated answers with an LLM (free-tier quota aware;
+# stops itself on the daily cap and resumes with --resume)
+python regenerate_answers.py --only-template --resume --workers 2 --max-requests 300
+
+# find and fill coverage gaps
+python generate_questions.py --plan
+python generate_questions.py --auto --budget 25
+```
+
+## Tests
+
+```bash
+python -m pip install pytest
+python -m pytest tests -q
+```
+
+Covers the schema, empty fields, question uniqueness, complete subject×difficulty
+coverage, the exact-match subject filter (including the Java/JavaScript case), the
+unknown-subject suggestion, and the cleaner's guards.
+
+After changing the dataset's **answer** text only, the embeddings stay valid: the
+index fingerprint can be refreshed instead of rebuilding. Changing questions,
+subjects or row count requires `--rebuild`.
+
 ## Notes and limits
 
 - Embeddings are computed on `subject + question`; the answer text is **not** embedded,

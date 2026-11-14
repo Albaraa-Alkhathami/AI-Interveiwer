@@ -6,6 +6,12 @@ combined_dataset_original_backup.csv
 combined_dataset_before_regeneration.csv
 combined_dataset_before_generation.csv
 
+# scratch / intermediate artefacts
+answers_round_prev.csv
+questions_generated_round*.csv
+combined_dataset_before_cleanup.csv
+final_dataset_analysis.xlsx
+
 # run logs
 *.log
 
