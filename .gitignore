@@ -22,3 +22,6 @@ __pycache__/
 
 # full-history backup bundles
 *.bundle
+
+# temporary store used during history rewrites
+.qkeep/
