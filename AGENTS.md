@@ -113,6 +113,21 @@ Run this after **any** dataset or script change:
   case-mismatched banned-phrase check and empty completions treated as success) hid for days
   precisely because nothing exercised them.
 
+## How to respond to the user
+
+The user's standing preferences for this project (agreed 14 Nov 2026):
+
+1. **Keep tables and headers.** Dense measurement reports are wanted in tabular form; do not
+   flatten them into prose.
+2. **For every decision put to the user, state both branches:** what happens if we do it, and
+   what happens if we do not. Name the cost of each, not just the benefit.
+3. **Do not act as a yes-man.** If the user is wrong, say so plainly and explain the error. If a
+   request would damage the project, argue against it before doing it. Agreement is not a
+   deliverable.
+
+Rule 2 applies to genuine choices with a trade-off. Do not manufacture a do/do-not section for
+routine, reversible steps — that is filler, and it buries the real decisions.
+
 ## Known gaps
 
 - `build_final_workbook.py` (generates `final_dataset.xlsx`) is kept **outside** this repo, so
