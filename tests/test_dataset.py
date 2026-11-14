@@ -172,6 +172,14 @@ class TestCleaner:
         glob = "Add a route with the path '**' as the last entry."
         assert clean(glob) == glob, "glob pattern must survive"
 
+    def test_normalises_typographic_punctuation(self):
+        assert clean("It\u2019s a \u201cclassic\u201d trade\u2011off \u2014 really.") == (
+            'It\'s a "classic" trade-off - really.'
+        )
+
+    def test_normalisation_leaves_ellipsis_and_ascii_alone(self):
+        assert clean("Plain text, no change\u2026") == "Plain text, no change\u2026"
+
     def test_collapses_double_spaces_in_prose(self):
         assert clean("A mutex  guards shared   state.") == "A mutex guards shared state."
 

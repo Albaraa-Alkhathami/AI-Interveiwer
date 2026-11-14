@@ -66,6 +66,22 @@ def unwrap_bold(answer: str) -> str:
     return BOLD.sub(repl, answer)
 
 
+# Typographic characters that break exact matching, CSV round-trips and naive
+# keyword search. They carry no meaning that ASCII punctuation does not.
+TYPOGRAPHIC = {
+    "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u2032": "'",
+    "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u2033": '"',
+    "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-",
+    "\u2014": "-", "\u2212": "-",
+    "\u00a0": " ", "\u202f": " ", "\u2009": " ",
+}
+
+
+def normalise_typography(answer: str) -> str:
+    """Map curly quotes, non-breaking hyphens and odd spaces to ASCII equivalents."""
+    return "".join(TYPOGRAPHIC.get(ch, ch) for ch in answer)
+
+
 def collapse_whitespace(answer: str) -> str:
     """Collapse runs of spaces inside prose, leaving indented code blocks alone."""
     if re.search(r"^\s{2,}\S", answer, re.M):
@@ -78,6 +94,7 @@ def clean(answer: str) -> str:
     out = strip_leading_filler(answer.strip())
     out = unwrap_bold(out)
     out = strip_trailing_chatter(out)
+    out = normalise_typography(out)
     out = collapse_whitespace(out)
     return out
 

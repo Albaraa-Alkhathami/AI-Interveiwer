@@ -4,7 +4,7 @@ Agreed 14 Nov 2026. **Improving existing rows comes before generating new ones**
 remaining daily token budget is spent in this order and generation only gets the leftovers.
 
 Order: (1) fabricated specifics → (2) chatter and short answers → (3) verify the two validator
-fixes on live traffic → (4) generation.
+fixes on live traffic → (4) shared answers → (5) generation.
 
 ## 1. Fabricated specifics (in progress — 18 of 108 done)
 
@@ -50,7 +50,19 @@ yet been exercised against the real API. Watch for these on the first real run:
 
 If either misbehaves, the failing case belongs in `tests/test_generation.py` first.
 
-## 4. Generation with whatever budget remains
+## 4. Shared answers (1,362 rows)
+
+**1,362 rows share their answer text with another row** — 265 distinct answers reused across
+different questions. The question-level dedupe cannot see this: every question is unique, but
+the answer next to it may have been copied from an unrelated one. This is worse than the
+boilerplate rows, because a templated answer reads as generic while a shared answer reads as
+specific and answers the wrong question.
+
+Targeted by `regenerate_answers.py` **without** `--only-template` (its default mode is
+boilerplate + duplicated answers). Re-run `--dry-run` first — the count now includes the
+remaining boilerplate, so the target list is larger than 1,362.
+
+## 5. Generation with whatever budget remains
 
 - General Computer Science (12 questions) and Version Control (17) are still flagged
   `limited data (<20 questions)`.
