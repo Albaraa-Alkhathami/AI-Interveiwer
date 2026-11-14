@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Audit an interview question/answer dataset. Read-only, stdlib only.
 
-    python audit.py combined_dataset.csv
-    python audit.py data.csv --answer text --question q --json
+    python audit_dataset.py combined_dataset.csv
+    python audit_dataset.py data.csv --answer text --question q --json
 
-Reports the defects that a question-level dedupe cannot see: answers shared
-between different questions, fabricated metrics or company names, assistant
-chatter, markdown leakage, typographic punctuation, and thin answers. Also
-prints subject x difficulty coverage when those columns exist.
+Reports the defects a question-level dedupe cannot see: answers shared between
+different questions, fabricated metrics or company names, assistant chatter,
+markdown leakage, typographic punctuation, and thin answers. Also prints
+subject x difficulty coverage when those columns exist.
 
 Exit status is 1 when a blocker is found (empty required fields, duplicate
 question texts, or invented specifics), else 0. Warnings never fail the run.
