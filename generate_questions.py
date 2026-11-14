@@ -109,7 +109,13 @@ def call_llm(payload_prompt: str, api_key: str, base_url: str, model: str,
             })
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read())["choices"][0]["message"]["content"]
+                content = json.loads(resp.read())["choices"][0]["message"].get("content") or ""
+            if not content.strip():
+                # see reasoning_effort above: an empty body is a failure, not 0 candidates
+                last = "empty completion (no content in response)"
+                time.sleep(1.0)
+                continue
+            return content
         except urllib.error.HTTPError as e:
             raw = e.read()[:400]
             text = raw.decode("utf-8", "ignore")

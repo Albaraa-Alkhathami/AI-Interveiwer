@@ -94,7 +94,9 @@ def validate(answer: str, seen: set[str]) -> str | None:
         return "unfinished sentence"
     lowered = a.lower()
     for b in BANNED:
-        if b in lowered:
+        # BANNED entries are mixed case; comparing them raw against lowercased text
+        # silently skipped every phrase with a capital letter
+        if b.lower() in lowered:
             return f"contains banned phrase: {b!r}"
     if norm(a) in seen:
         return "duplicate of another generated answer"
@@ -138,7 +140,14 @@ def call_llm(question: str, subject: str, difficulty: str,
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 data = json.loads(resp.read())
-            return data["choices"][0]["message"]["content"].strip()
+            content = (data["choices"][0]["message"].get("content") or "").strip()
+            if not content:
+                # reasoning models can spend the whole budget thinking and return
+                # nothing; retrying is cheaper than silently storing an empty answer
+                last = "empty completion (no content in response)"
+                time.sleep(1 + random.random())
+                continue
+            return content
         except urllib.error.HTTPError as e:
             body = e.read()[:400]
             text = body.decode("utf-8", "ignore")
