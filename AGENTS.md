@@ -124,15 +124,19 @@ The user's standing preferences for this project (agreed 14 Nov 2026):
 
    ```
    if we do it:
-     + positive aspect
-     + positive aspect
-     - negative aspect
+   (+) positive aspect
+   (+) positive aspect
+   (-) negative aspect
 
    if we don't:
-     + positive aspect
-     - negative aspect
-     - negative aspect
+   (+) positive aspect
+   (-) negative aspect
+   (-) negative aspect
    ```
+
+   Write the sign as `(+)` / `(-)`, not a leading `+` or `-`: in Markdown a leading plus,
+   minus or asterisk is a list marker, so the chat UI renders all three as the same round
+   bullet and the sign is lost. Wrapping it in parentheses keeps it visible.
 
    Every branch carries both signs — a branch with only upsides means the trade-off was not
    found yet. Keep the points distinct between branches; do not mirror the same point twice.
