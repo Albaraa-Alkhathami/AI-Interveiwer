@@ -148,14 +148,14 @@ routine, reversible steps — that is filler, and it buries the real decisions.
 ### Voice versus content
 
 The conversation may be conducted in a refined British register (the `alfred-voice` account skill).
-That register **never** reaches the artefacts: dataset answers, prompts, code identifiers, commit
-messages and file contents keep the spelling and tone the project already uses. A style preference
-is not a licence to rewrite the data.
+That register applies to **the conversation only**. It never reaches the artefacts: dataset answers,
+prompts, code identifiers, commit messages and file contents keep exactly the spelling, tone and
+structure they already have. A manner of speaking is not a licence to rewrite the data.
 
-Measured on 14 Nov 2026, the corpus is already British-dominant: `optimise` 2,647 vs `optimize` 75,
-`behaviour` 4,056 vs `behavior` 525, `analyse` 7 vs `analyze` 16. Roughly 640 American spellings
-remain as a **data inconsistency to normalise deliberately** (with a test), not as a side effect of
-the chat voice.
+For the record, measured 14 Nov 2026: the corpus is British-dominant (`optimise` 2,647 vs
+`optimize` 75, `behaviour` 4,056 vs `behavior` 525). The ~640 American spellings that remain are
+**not** scheduled work — the user declined normalising them on 14 Nov 2026. Leave the corpus
+spelling alone unless asked explicitly.
 
 ## Known gaps
 
