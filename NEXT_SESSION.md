@@ -3,6 +3,9 @@
 Agreed 14 Nov 2026. **Improving existing rows comes before generating new ones**, so the
 remaining daily token budget is spent in this order and generation only gets the leftovers.
 
+Order: (1) fabricated specifics → (2) chatter and short answers → (3) verify the two validator
+fixes on live traffic → (4) generation.
+
 ## 1. Fabricated specifics (first)
 
 76 answers carry invented metrics ("we compressed the model size by 4.3x", "60% less
@@ -27,7 +30,19 @@ Ordered by how visible the defect is:
 
 `clean_answers.py` cannot fix these — they need generated text.
 
-## 3. Generation with whatever budget remains
+## 3. Confirm the two validator/completion fixes on live traffic
+
+Both are fixed and unit-tested (commit `b85a0b9`), with mocked HTTP only — they have not
+yet been exercised against the real API. Watch for these on the first real run:
+
+| Fix | What to look for |
+|---|---|
+| Banned-phrase check now compares lowercased patterns | No accepted answer contains "A good answer should address the requirements…" or "Certainly!". A non-zero `rejected: contains banned phrase` count is now *expected*, not a bug. |
+| Empty completion is a retryable failure | `failed` counts may rise and `ok=0` should never be reported for a cell that actually returned nothing. Log lines like `empty completion (no content in response)` are the guard working. |
+
+If either misbehaves, the failing case belongs in `tests/test_generation.py` first.
+
+## 4. Generation with whatever budget remains
 
 - General Computer Science (12 questions) and Version Control (17) are still flagged
   `limited data (<20 questions)`.
