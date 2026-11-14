@@ -1,0 +1,121 @@
+# AGENTS.md
+
+Instructions for coding agents working in this repository. Read this before changing
+anything; the rules below exist because each one was learned the hard way.
+
+## What this project is
+
+Two deliverables in one folder:
+
+1. **`combined_dataset.csv`** — 23,954 interview questions with reference answers, 46 subjects,
+   3 difficulty levels, 138/138 subject × difficulty cells covered, schema
+   `prompt, question, answer, subject, difficulty, data_flag`.
+2. **A semantic search prototype** (`search_app.py`) that embeds questions locally with
+   `BAAI/bge-small-en-v1.5` (ONNX, CPU) and returns the top-k answers by cosine similarity,
+   filtered by subject and difficulty.
+
+Supporting scripts improve the dataset in reviewable batches. Current limitations are
+documented in `DATA_LIMITATIONS.md`; outstanding work is in `NEXT_SESSION.md`.
+
+## Non-negotiables
+
+- **Never write an API key into a file, a commit, or a chat message.** Keys come from
+  `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` in the environment. Do not read,
+  print or echo a key file.
+- **Never retry a `429` whose body says `per day`.** That is the free tier's hard cap; retrying
+  risks a paid overage. Set `STOP` and end the run. Per-minute (`TPM`) limits are different —
+  wait the hinted `try again in Xs` and retry.
+- **No fabricated specifics.** Generated answers must not state benchmark numbers, metrics,
+  multipliers, company names or dates. Describe the mechanism and trade-off instead.
+- **ASCII punctuation only** in answers (curly quotes, non-breaking hyphens and em dashes are
+  normalised away). Exceptions kept deliberately: `…` and maths symbols such as `∑ × ³ ∞ → λ`.
+- **Scripts resolve paths from `__file__`** (`BASE = Path(__file__).resolve().parent`) so they
+  work when run from anywhere. Never hardcode `C:\Users\...`.
+
+## Answer style contract
+
+Every generated answer must satisfy all of these; `validate()` in `regenerate_answers.py`
+enforces the mechanical ones:
+
+| Rule | Detail |
+|---|---|
+| Length | 300–2,500 characters, target 120–220 words |
+| Voice | First person, as the candidate ("I start by…") |
+| Format | Plain prose. No markdown, bold, headings, bullets or tables |
+| Opening | No filler ("Certainly.", "Sure.", "Of course.") |
+| Ending | Terminal punctuation; no assistant chatter ("Let me know if you need anything else") |
+| Content | No invented metrics, company names, dates or results |
+| Specificity | Name the technique, mechanism, trade-off or debugging step |
+
+## Quota discipline (Groq free tier)
+
+- **8,000 tokens/minute** and **200,000 tokens/day** for `openai/gpt-oss-20b`.
+  One 220-word answer costs roughly 600–900 tokens, so a day yields **~215 answers**, not the
+  1,000 the request counter suggests. The per-day token bucket binds first.
+- `gpt-oss-20b` is a **reasoning model**. For JSON generation pass
+  `reasoning_effort: "low"` — otherwise it can spend the whole `max_tokens` on hidden
+  reasoning and return `content: ""` with `finish_reason: "length"`. That failure is silent:
+  it looks like "0 candidates", not like an error.
+- **An empty completion is a failure**, never an empty answer. Both scripts retry it.
+- Always pass `--max-requests`/`--budget` so a run cannot outlive its allowance.
+- Generators write a reviewable CSV; `--apply` merges it. Use `--resume` to continue a stopped
+  run — it skips rows already marked `ok`.
+- `generate_questions.py` **appends** to its output file, so merging two runs can repeat rows.
+  `--apply` dedupes against the dataset; do not blind-append.
+
+## Scripts
+
+| Script | Purpose | Key flags |
+|---|---|---|
+| `search_app.py` | validate, embed, search | `--validate`, `--rebuild`, `-q`, `-s`, `-d`, `-k`, `--interactive` |
+| `regenerate_answers.py` | rewrite weak answers | `--only-template`, `--only-suspicious`, `--resume`, `--max-requests`, `--workers`, `--dry-run`, `--apply` |
+| `generate_questions.py` | fill coverage gaps | `--plan`, `--auto`, `--budget`, `--subject`, `--difficulty`, `--count`, `--apply` |
+| `clean_answers.py` | mechanical answer fixes, no model | dry run by default, `--apply`, `--show N` |
+
+## Post-edit checklist
+
+Run this after **any** dataset or script change:
+
+1. `python -m pytest tests -q` — the full suite, no network and no API key needed. If you
+   add tests, update this file rather than letting the count drift.
+2. `python clean_answers.py` (dry run) — confirm you did not introduce chatter, filler,
+   markdown or typographic punctuation.
+3. Rebuild the workbook if `combined_dataset.csv` changed.
+4. **Index rebuild is usually unnecessary.** The cache fingerprint hashes only
+   `subject + question`, so answer-only edits keep the existing `.npy`. Changing questions,
+   subjects or row order **does** invalidate it: `python search_app.py --rebuild` (~10 min).
+5. Update the figures in `DATA_LIMITATIONS.md` if counts changed — they are measured, not
+   approximated, and stale numbers there are treated as bugs.
+6. Commit with a message explaining *why*. Never commit `embeddings/`, `*.log`, `*.bundle`,
+   `.qkeep/` or scratch CSVs — `.gitignore` covers them.
+
+## Data rules
+
+- One row per question text; no exact duplicates, no empty required fields.
+- `subject` filtering is an **exact, case-insensitive** match. Substring matching is a bug: it
+  let `-s Java` return JavaScript rows, and there is a test guarding that.
+- `difficulty` is exactly `Easy` / `Medium` / `Hard`.
+- `data_flag` carries `limited data (<20 questions)` for thin subjects. Do not invent other
+  values; add new columns only with the user's agreement, since the five-column schema is part
+  of the brief.
+- 1,362 rows still share their answer text with another row — a known defect, not intent.
+
+## Testing conventions
+
+- `tests/test_dataset.py` — schema, uniqueness, coverage, exact filters, index fingerprint,
+  cleaner guards.
+- `tests/test_generation.py` — both generation scripts via a scripted fake `urllib.request.urlopen`;
+  `time.sleep` is patched out. Retry, quota-stop and empty-completion paths are covered.
+- **Write the failing test before fixing a bug in these paths.** Two real defects (a
+  case-mismatched banned-phrase check and empty completions treated as success) hid for days
+  precisely because nothing exercised them.
+
+## Known gaps
+
+- `build_final_workbook.py` (generates `final_dataset.xlsx`) is kept **outside** this repo, so
+  the workbook cannot be rebuilt from a clean clone.
+- `regenerate_answers.py` and `generate_questions.py` have no end-to-end test against a real
+  endpoint; everything is mocked.
+- The repo history was rewritten on 14 Nov 2026 to drop duplicate 60 MB dataset blobs. A safety
+  bundle exists locally (`git-history-backup-2026-11-14.bundle`, gitignored). Adding the dataset
+  as a fresh commit costs ~27 MB packed, so prefer release assets over repeated commits.
