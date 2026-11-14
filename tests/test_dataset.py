@@ -21,7 +21,7 @@ BASE = Path(__file__).resolve().parents[1]
 CSV_PATH = BASE / "combined_dataset.csv"
 sys.path.insert(0, str(BASE))
 
-from clean_answers import clean, safe  # noqa: E402
+from clean_answers import clean, normalise_typography, safe  # noqa: E402
 
 REQUIRED_COLUMNS = ["prompt", "question", "answer", "subject", "difficulty"]
 
@@ -173,12 +173,18 @@ class TestCleaner:
         assert clean(glob) == glob, "glob pattern must survive"
 
     def test_normalises_typographic_punctuation(self):
-        assert clean("It\u2019s a \u201cclassic\u201d trade\u2011off \u2014 really.") == (
+        assert normalise_typography("It\u2019s a \u201cclassic\u201d trade\u2011off \u2014 really.") == (
             'It\'s a "classic" trade-off - really.'
         )
 
     def test_normalisation_leaves_ellipsis_and_ascii_alone(self):
-        assert clean("Plain text, no change\u2026") == "Plain text, no change\u2026"
+        assert normalise_typography("Plain text, no change\u2026") == "Plain text, no change\u2026"
+
+    def test_typography_is_independent_of_the_length_guard(self):
+        """Short rows must still be normalised; the guard only protects chatter removal."""
+        short = "It\u2019s short."
+        assert safe(short, clean(short))[0] is False  # guard skips it
+        assert normalise_typography(short) == "It's short."  # yet it is still fixed
 
     def test_collapses_double_spaces_in_prose(self):
         assert clean("A mutex  guards shared   state.") == "A mutex guards shared state."

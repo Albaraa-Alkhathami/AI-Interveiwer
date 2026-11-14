@@ -71,6 +71,7 @@ enforces the mechanical ones:
 | `regenerate_answers.py` | rewrite weak answers | `--only-template`, `--only-suspicious`, `--resume`, `--max-requests`, `--workers`, `--dry-run`, `--apply` |
 | `generate_questions.py` | fill coverage gaps | `--plan`, `--auto`, `--budget`, `--subject`, `--difficulty`, `--count`, `--apply` |
 | `clean_answers.py` | mechanical answer fixes, no model | dry run by default, `--apply`, `--show N` |
+| `audit_dataset.py` | read-only quality audit, no model | `--question/--answer/--subject/--difficulty`, `--json`; exits 1 on blockers |
 
 ## Post-edit checklist
 
@@ -78,6 +79,8 @@ Run this after **any** dataset or script change:
 
 1. `python -m pytest tests -q` — the full suite, no network and no API key needed. If you
    add tests, update this file rather than letting the count drift.
+   `python audit_dataset.py combined_dataset.csv` runs before any token spend and again after a
+   batch; it exits non-zero on empty fields, duplicate questions or invented specifics.
 2. `python clean_answers.py` (dry run) — confirm you did not introduce chatter, filler,
    markdown or typographic punctuation.
 3. Rebuild the workbook if `combined_dataset.csv` changed.
@@ -116,6 +119,8 @@ Run this after **any** dataset or script change:
   the workbook cannot be rebuilt from a clean clone.
 - `regenerate_answers.py` and `generate_questions.py` have no end-to-end test against a real
   endpoint; everything is mocked.
+- `audit_dataset.py` is also embedded in an account skill (`interview-dataset-style`) so it is
+  available outside this repo; keep the two copies in step if you change it.
 - The repo history was rewritten on 14 Nov 2026 to drop duplicate 60 MB dataset blobs. A safety
   bundle exists locally (`git-history-backup-2026-11-14.bundle`, gitignored). Adding the dataset
   as a fresh commit costs ~27 MB packed, so prefer release assets over repeated commits.

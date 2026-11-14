@@ -91,10 +91,10 @@ def collapse_whitespace(answer: str) -> str:
 
 
 def clean(answer: str) -> str:
+    """Guarded pass: only edits that could shorten an answer enough to matter."""
     out = strip_leading_filler(answer.strip())
     out = unwrap_bold(out)
     out = strip_trailing_chatter(out)
-    out = normalise_typography(out)
     out = collapse_whitespace(out)
     return out
 
@@ -125,17 +125,25 @@ def main() -> None:
         cols = list(reader.fieldnames or [])
         rows = list(reader)
 
-    changed, skipped = [], []
+    changed, skipped, retyped = [], [], []
     for row in rows:
         original = row["answer"]
-        cleaned = clean(original)
-        ok, why = safe(original, cleaned)
+        # Typography is applied unconditionally: mapping a curly quote to an ASCII one
+        # cannot damage meaning, so the length guard (aimed at chatter removal) must not
+        # skip short rows and leave them unmatchable.
+        normalised = normalise_typography(original)
+        if normalised != original:
+            retyped.append(row)
+            row["answer"] = normalised
+        cleaned = clean(normalised)
+        ok, why = safe(normalised, cleaned)
         if ok:
-            changed.append((row, original, cleaned))
+            changed.append((row, normalised, cleaned))
         elif why != "unchanged":
             skipped.append((row, why))
 
-    print(f"rows: {len(rows):,} | to clean: {len(changed):,} | skipped by guard: {len(skipped):,}")
+    print(f"rows: {len(rows):,} | typography: {len(retyped):,} | to clean: {len(changed):,} "
+          f"| skipped by guard: {len(skipped):,}")
     for row, original, cleaned in changed[: args.show]:
         print(f"\n  [{row['subject']}] {row['question'][:70]}")
         print(f"  before: ...{original[-110:]!r}")
@@ -152,12 +160,14 @@ def main() -> None:
     shutil.copy(CSV_PATH, BACKUP_PATH)
     for row, _, cleaned in changed:
         row["answer"] = cleaned
+    # rows whose typography changed stay updated even when their guard skipped them
     with open(CSV_PATH, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=cols)
         writer.writeheader()
         writer.writerows(rows)
     print(f"\nbackup: {BACKUP_PATH.name}")
-    print(f"applied {len(changed):,} cleaned answers -> {CSV_PATH.name}")
+    print(f"applied {len(changed):,} cleaned answers + {len(retyped):,} typography fixes "
+          f"-> {CSV_PATH.name}")
 
 
 if __name__ == "__main__":
