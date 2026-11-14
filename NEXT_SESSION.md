@@ -6,7 +6,7 @@ remaining daily token budget is spent in this order and generation only gets the
 Order: (1) fabricated specifics → (2) chatter and short answers → (3) verify the two validator
 fixes on live traffic → (4) shared answers → (5) generation.
 
-## 1. Fabricated specifics (in progress — 18 of 108 done)
+## 1. Fabricated specifics (in progress — 27 of 108 done)
 
 108 answers carry invented metrics ("we compressed the model size by 4.3x", "60% less
 memory") or name real companies (Google, Amazon, Netflix…). Highest-risk content: it reads as
@@ -15,9 +15,10 @@ verified results.
 Tooling is in place: `--only-suspicious` selects exactly these rows, appends `NO_METRICS` to the
 prompt, and **rejects** any rewrite that still contains a figure or company name.
 
-**Remaining: 94 rows.** Note that 4 of the first 18 rewrites slipped a hedged figure
-("about 30%") because the question itself asks "how much did you improve" — the new rejection
-rule catches those, so expect a higher reject rate and rerun until the count stops falling.
+**Remaining: 85 rows** (54 with metrics, 31 naming companies). Note that some early rewrites
+slipped a hedged figure ("about 30%") because the question itself asks "how much did you
+improve" — the rejection rule catches those, so expect a reject rate and rerun until the count
+stops falling. Each run today yielded 9–18 answers before the daily cap closed.
 
 ```bash
 export OPENAI_API_KEY=... OPENAI_BASE_URL=https://api.groq.com/openai/v1 OPENAI_MODEL=openai/gpt-oss-20b
