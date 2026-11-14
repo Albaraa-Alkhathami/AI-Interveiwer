@@ -48,6 +48,32 @@ If either misbehaves, the failing case belongs in `tests/test_generation.py` fir
   `limited data (<20 questions)`.
 - Run `generate_questions.py --plan` first; it recomputes the deficits from the current file.
 
+## Repo size — decision recorded 14 Nov 2026
+
+`.git` is **155 MB**: 7 historical copies of `combined_dataset.csv` (≈421 MB uncompressed),
+one 26.5 MB source CSV, and old workbook snapshots. GitHub warns above 50 MB per file and
+hard-blocks at 100 MB; the current file is 61 MB, so nothing is broken today.
+
+**Decision: keep history as-is for now; rewrite only once the dataset is final.**
+
+Why not now: every answer batch rewrites all ~24,000 rows, so each commit adds another
+~60 MB blob. Rewriting today would have to be repeated (and force-pushed again) after the
+next batch. LFS is the wrong tool for a file that changes wholesale each time — every version
+becomes a separate LFS object against a 1 GB storage / 1 GB monthly bandwidth quota.
+
+When the data is frozen, the plan is to keep code history and drop the dataset blobs:
+
+```bash
+git bundle create backup.bundle --all     # already done: git-history-backup-2026-11-14.bundle (81 MB)
+pip install git-filter-repo
+git filter-repo --path combined_dataset.csv --path final_dataset.xlsx --invert-paths
+git push --force origin main               # invalidates existing clones
+```
+
+A verified full-history bundle exists at `git-history-backup-2026-11-14.bundle` (81 MB,
+gitignored), so any rewrite is reversible. Six unreachable objects are present, so never run
+`git gc --prune=now`.
+
 ## Notes for the run
 
 - Free tier: **8,000 tokens/minute** and **200,000 tokens/day**. Expect ~215 answers per day,

@@ -19,3 +19,6 @@ final_dataset_analysis.xlsx
 __pycache__/
 *.pyc
 .idea/
+
+# full-history backup bundles
+*.bundle
