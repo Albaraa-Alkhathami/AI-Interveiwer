@@ -93,6 +93,9 @@ def call_llm(payload_prompt: str, api_key: str, base_url: str, model: str,
                      {"role": "user", "content": payload_prompt}],
         "temperature": 0.9,
         "max_tokens": 3200,  # 5 pairs of ~200-word answers
+        # gpt-oss spends the whole budget on hidden reasoning otherwise and
+        # returns empty content with finish_reason="length"
+        "reasoning_effort": "low"
     }).encode()
     last = None
     for attempt in range(retries):
