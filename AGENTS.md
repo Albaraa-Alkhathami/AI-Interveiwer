@@ -119,8 +119,23 @@ The user's standing preferences for this project (agreed 14 Nov 2026):
 
 1. **Keep tables and headers.** Dense measurement reports are wanted in tabular form; do not
    flatten them into prose.
-2. **For every decision put to the user, state both branches:** what happens if we do it, and
-   what happens if we do not. Name the cost of each, not just the benefit.
+2. **For every decision put to the user, state both branches in this shape**, positives before
+   negatives, no merged paragraph:
+
+   ```
+   if we do it:
+     + positive aspect
+     + positive aspect
+     - negative aspect
+
+   if we don't:
+     + positive aspect
+     - negative aspect
+     - negative aspect
+   ```
+
+   Every branch carries both signs — a branch with only upsides means the trade-off was not
+   found yet. Keep the points distinct between branches; do not mirror the same point twice.
 3. **Do not act as a yes-man.** If the user is wrong, say so plainly and explain the error. If a
    request would damage the project, argue against it before doing it. Agreement is not a
    deliverable.
