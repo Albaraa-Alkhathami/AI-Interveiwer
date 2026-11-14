@@ -6,16 +6,24 @@ remaining daily token budget is spent in this order and generation only gets the
 Order: (1) fabricated specifics → (2) chatter and short answers → (3) verify the two validator
 fixes on live traffic → (4) generation.
 
-## 1. Fabricated specifics (first)
+## 1. Fabricated specifics (in progress — 18 of 108 done)
 
-76 answers carry invented metrics ("we compressed the model size by 4.3x", "60% less
-memory") and 31 name real companies (Google, Amazon, Netflix…). These came from
-research-abstract source rows and are the highest-risk content in the dataset: they read as
+108 answers carry invented metrics ("we compressed the model size by 4.3x", "60% less
+memory") or name real companies (Google, Amazon, Netflix…). Highest-risk content: it reads as
 verified results.
 
-Plan: reuse the `regenerate_answers.py` pipeline with a selector for exactly these rows, so
-the 220-word rewrites describe *technique and trade-offs* rather than results. The prompt
-already forbids invented metrics and company names; the selector is the missing piece.
+Tooling is in place: `--only-suspicious` selects exactly these rows, appends `NO_METRICS` to the
+prompt, and **rejects** any rewrite that still contains a figure or company name.
+
+**Remaining: 94 rows.** Note that 4 of the first 18 rewrites slipped a hedged figure
+("about 30%") because the question itself asks "how much did you improve" — the new rejection
+rule catches those, so expect a higher reject rate and rerun until the count stops falling.
+
+```bash
+export OPENAI_API_KEY=... OPENAI_BASE_URL=https://api.groq.com/openai/v1 OPENAI_MODEL=openai/gpt-oss-20b
+python regenerate_answers.py --only-suspicious --resume --workers 2 --max-requests 250 --out answers_suspicious.csv
+python regenerate_answers.py --apply answers_suspicious.csv
+```
 
 ## 2. Chatter, short answers, remaining boilerplate
 

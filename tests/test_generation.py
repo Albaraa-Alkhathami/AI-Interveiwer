@@ -195,6 +195,61 @@ class TestPickTargets:
 # --------------------------------------------------------------------------- #
 # generate_questions.parse_pairs and call_llm
 # --------------------------------------------------------------------------- #
+class TestSuspiciousSelector:
+    """Priority-1 rows: invented metrics and company names."""
+
+    def test_flags_invented_metrics(self):
+        assert ra.is_suspicious("We improved training speed by 3.1x through batching.")
+        assert ra.is_suspicious("It reduced memory by 60% on the same hardware.")
+        assert ra.is_suspicious("We got 40 ms per frame after the change.")
+
+    def test_flags_company_names(self):
+        assert ra.is_suspicious("At Google we sharded the index by tenant.")
+        assert ra.is_suspicious("This is how Netflix tunes its encoder.")
+
+    def test_ignores_ordinary_answers(self):
+        assert not ra.is_suspicious(GOOD_ANSWER)
+        assert not ra.is_suspicious("A mutex guards shared state; a semaphore counts permits.")
+
+    def test_selector_returns_only_flagged_rows(self):
+        rows = [
+            {"question": "q1", "answer": "We cut latency by 4.3x with a cache."},
+            {"question": "q2", "answer": GOOD_ANSWER},
+            {"question": "q3", "answer": "At Amazon this is handled by a queue."},
+        ]
+        picked = [r["question"] for r in ra.pick_targets(rows, only_suspicious=True)]
+        assert picked == ["q1", "q3"]
+
+
+def test_no_metrics_instruction_reaches_the_request(monkeypatch):
+    """The extra instruction must actually be in the body, not just defined."""
+    seen: list[bytes] = []
+
+    def fake(req, timeout=None):
+        seen.append(req.data)
+        return completion("an answer with no figures at all")
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    ra.call_llm("q", "S", "D", "k", "https://api.example/v1", "m", extra=ra.NO_METRICS)
+    body = json.loads(seen[0])
+    user = body["messages"][1]["content"]
+    assert "NO figures at all" in user
+    assert "never 'about 30%'" in user
+
+
+def test_no_metrics_instruction_absent_by_default(monkeypatch):
+    seen: list[bytes] = []
+
+    def fake(req, timeout=None):
+        seen.append(req.data)
+        return completion("plain answer")
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    ra.call_llm("q", "S", "D", "k", "https://api.example/v1", "m")
+    user = json.loads(seen[0])["messages"][1]["content"]
+    assert "NO figures" not in user
+
+
 class TestParsePairs:
     def test_plain_json_array(self):
         raw = json.dumps([{"question": "Q1?", "answer": "A1"}, {"question": "Q2?", "answer": "A2"}])

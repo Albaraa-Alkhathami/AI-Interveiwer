@@ -21,6 +21,7 @@ import csv
 import json
 import os
 import random
+import re
 import sys
 import threading
 import time
@@ -66,12 +67,28 @@ USER_TMPL = (
 
 STOP = threading.Event()  # set when the provider says we are out of quota
 
+# Rows whose text invents verifiable specifics. These read as proven results and are
+# the highest-risk content in the dataset, so they are rewritten before anything else.
+METRIC_RE = re.compile(r"\b\d+(?:\.\d+)?\s?%|\b\d+(?:\.\d+)?x\b|\b\d+\s?(?:ms|GB|MB|fps)\b")
+COMPANY_RE = re.compile(
+    r"\b(?:Google|Amazon|Microsoft|Netflix|Uber|Meta|Facebook|Apple|Nvidia|IBM|OpenAI|"
+    r"DeepMind|Tesla|Airbnb|Spotify|LinkedIn|Twitter)\b"
+)
+
+
+def is_suspicious(answer: str) -> bool:
+    """True when the answer states a metric or names a company it cannot substantiate."""
+    return bool(METRIC_RE.search(answer) or COMPANY_RE.search(answer))
+
 
 def norm(text: str) -> str:
     return " ".join(text.lower().split())
 
 
-def pick_targets(rows: list[dict], only_template: bool = False) -> list[dict]:
+def pick_targets(rows: list[dict], only_template: bool = False,
+                 only_suspicious: bool = False) -> list[dict]:
+    if only_suspicious:
+        return [r for r in rows if is_suspicious(r["answer"])]
     counts = Counter(norm(r["answer"]) for r in rows)
     picked = []
     for r in rows:
@@ -110,15 +127,26 @@ def retry_hint(text: str) -> float | None:
     return float(m.group(1)) if m else None
 
 
+# Used for --only-suspicious rows: those questions ask "how much did you improve", which
+# tempts the model into a plausible number of its own ("about 30% of the entries").
+NO_METRICS = (
+    "This question asks for a quantity, but state NO figures at all — no percentage, ratio,\n"
+    "multiplier, count or measurement, not even an approximate one (never 'about 30%').\n"
+    "Answer with the mechanism, the trade-off and how you would verify the improvement instead."
+)
+
+
 def call_llm(question: str, subject: str, difficulty: str,
              api_key: str, base_url: str, model: str,
-             retries: int = 8, timeout: int = 60) -> str:
+             retries: int = 8, timeout: int = 60, extra: str = "") -> str:
+    user_content = USER_TMPL.format(subject=subject, difficulty=difficulty, question=question)
+    if extra:
+        user_content = f"{user_content}\n\n{extra}"
     payload = json.dumps({
         "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM},
-            {"role": "user", "content": USER_TMPL.format(
-                subject=subject, difficulty=difficulty, question=question)},
+            {"role": "user", "content": user_content},
         ],
         "temperature": 0.7,
         "max_tokens": 900,  # enough for 220 words without truncating mid-sentence
@@ -167,8 +195,12 @@ def call_llm(question: str, subject: str, difficulty: str,
     raise RuntimeError(last or "unknown error")
 
 
-def dry_run(rows: list[dict], targets: list[dict], only_template: bool = False) -> None:
-    print(f"mode                 : {'boilerplate answers only' if only_template else 'boilerplate + duplicated answers'}")
+def dry_run(rows: list[dict], targets: list[dict], only_template: bool = False,
+            only_suspicious: bool = False) -> None:
+    mode = ("invented metrics / company names only" if only_suspicious
+            else "boilerplate answers only" if only_template
+            else "boilerplate + duplicated answers")
+    print(f"mode                 : {mode}")
     print(f"dataset rows          : {len(rows):,}")
     print(f"target rows           : {len(targets):,} ({100 * len(targets) / len(rows):.1f}%)")
     templated = sum(1 for r in targets if any(t in r["answer"] for t in TEMPLATES))
@@ -199,6 +231,8 @@ def main() -> None:
     ap.add_argument("--limit", type=int, help="only process the first N targets (pilot)")
     ap.add_argument("--only-template", action="store_true",
                     help="regenerate only the boilerplate answers (smaller, cheaper run)")
+    ap.add_argument("--only-suspicious", action="store_true",
+                    help="regenerate only answers that invent metrics or name companies")
     ap.add_argument("--workers", type=int, default=8, help="parallel requests (default 8)")
     ap.add_argument("--out", default="answers_regenerated.csv", help="output CSV")
     ap.add_argument("--max-requests", type=int, help="hard cap on API calls this run")
@@ -237,12 +271,13 @@ def main() -> None:
         print(f"applied {applied:,} new answers -> {SRC.name}")
         return
 
-    targets = pick_targets(rows, only_template=args.only_template)
+    targets = pick_targets(rows, only_template=args.only_template,
+                           only_suspicious=args.only_suspicious)
     if not targets:
         sys.exit("nothing to regenerate — no templated or duplicated answers found")
 
     if args.dry_run:
-        dry_run(rows, targets, args.only_template)
+        dry_run(rows, targets, args.only_template, args.only_suspicious)
         return
 
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -281,7 +316,8 @@ def main() -> None:
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             futures = {
                 pool.submit(call_llm, r["question"], r["subject"], r["difficulty"],
-                            api_key, base_url, model): r
+                            api_key, base_url, model,
+                            extra=NO_METRICS if args.only_suspicious else ""): r
                 for r in targets
             }
             for fut in as_completed(futures):
@@ -290,6 +326,9 @@ def main() -> None:
                 try:
                     new = fut.result()
                     reason = validate(new, seen)
+                    if not reason and args.only_suspicious and is_suspicious(new):
+                        # the prompt asks for no figures; enforce it rather than trust it
+                        reason = "still contains a metric or company name"
                     if reason:
                         rejected += 1
                         writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
@@ -312,8 +351,9 @@ def main() -> None:
 
     print(f"\nwrote {out_path.name}: ok={ok:,} rejected={rejected:,} failed={failed:,}")
     if STOP.is_set():
+        rerun_flag = "--only-suspicious" if args.only_suspicious else "--only-template"
         print("STOPPED on quota exhaustion — nothing was charged. Continue later with:")
-        print(f"  python regenerate_answers.py --only-template --resume --out {args.out}")
+        print(f"  python regenerate_answers.py {rerun_flag} --resume --out {args.out}")
     else:
         print("Review a sample, then run: python regenerate_answers.py --apply", args.out)
 
