@@ -80,6 +80,75 @@ def test_unknown_subject_exits_with_suggestion():
     assert "did you mean" in (out.stdout + out.stderr).lower()
 
 
+def test_unknown_difficulty_is_rejected():
+    out = subprocess.run(
+        [sys.executable, "search_app.py", "-q", "anything", "-d", "Impossible"],
+        cwd=BASE, capture_output=True, text=True, timeout=300,
+    )
+    assert out.returncode != 0, "an invalid difficulty must fail, not silently return nothing"
+
+
+def test_difficulty_filter_returns_only_that_level():
+    out = subprocess.run(
+        [sys.executable, "search_app.py", "-q", "memory management and pointers", "-d", "Hard", "-k", "5"],
+        cwd=BASE, capture_output=True, text=True, timeout=300,
+    )
+    assert out.returncode == 0, out.stderr[-800:]
+    levels = [ln.split("·")[1].strip() for ln in out.stdout.splitlines() if "·" in ln]
+    assert levels, "expected at least one result"
+    assert set(levels) == {"Hard"}, f"difficulty filter leaked other levels: {set(levels)}"
+
+
+class TestIndexFingerprint:
+    """Answer edits must not invalidate the index; question edits must."""
+
+    HEADER = ["prompt", "question", "answer", "subject", "difficulty", "data_flag"]
+
+    def _write(self, path, question: str, answer: str) -> None:
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=self.HEADER)
+            w.writeheader()
+            w.writerow({"prompt": "p", "question": question, "answer": answer,
+                        "subject": "Java", "difficulty": "Easy", "data_flag": ""})
+
+    def test_answer_change_keeps_the_fingerprint(self, tmp_path):
+        import search_app as sa
+
+        a, b = tmp_path / "a.csv", tmp_path / "b.csv"
+        self._write(a, "What is a monitor?", "short answer")
+        self._write(b, "What is a monitor?", "a completely different and much longer answer")
+        assert sa.fingerprint(a) == sa.fingerprint(b)
+
+    def test_question_change_invalidates_the_fingerprint(self, tmp_path):
+        import search_app as sa
+
+        a, b = tmp_path / "a.csv", tmp_path / "b.csv"
+        self._write(a, "What is a monitor?", "same answer")
+        self._write(b, "What is a semaphore?", "same answer")
+        assert sa.fingerprint(a) != sa.fingerprint(b)
+
+    def test_row_order_invalidates_the_fingerprint(self, tmp_path):
+        import search_app as sa
+
+        header = self.HEADER
+        a, b = tmp_path / "a.csv", tmp_path / "b.csv"
+        for path, order in ((a, [0, 1]), (b, [1, 0])):
+            rows = [
+                {"prompt": "p", "question": "Q1?", "answer": "a", "subject": "Java",
+                 "difficulty": "Easy", "data_flag": ""},
+                {"prompt": "p", "question": "Q2?", "answer": "a", "subject": "Java",
+                 "difficulty": "Easy", "data_flag": ""},
+            ]
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=header)
+                w.writeheader()
+                for i in order:
+                    w.writerow(rows[i])
+        assert sa.fingerprint(a) != sa.fingerprint(b), (
+            "reordering rows must rebuild: the .npy rows would otherwise misalign"
+        )
+
+
 class TestCleaner:
     def test_removes_trailing_chatter(self):
         answer = (
@@ -102,6 +171,13 @@ class TestCleaner:
         assert clean(exponent) == exponent, "python exponent operator must survive"
         glob = "Add a route with the path '**' as the last entry."
         assert clean(glob) == glob, "glob pattern must survive"
+
+    def test_collapses_double_spaces_in_prose(self):
+        assert clean("A mutex  guards shared   state.") == "A mutex guards shared state."
+
+    def test_keeps_code_indentation(self):
+        code = "def f():\n    x = 1\n    return  x"
+        assert clean(code) == code, "indentation must survive"
 
     def test_guard_rejects_answers_that_become_too_thin(self):
         answer = "Yes. Feel free to ask if you have more questions about this."

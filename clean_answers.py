@@ -66,10 +66,19 @@ def unwrap_bold(answer: str) -> str:
     return BOLD.sub(repl, answer)
 
 
+def collapse_whitespace(answer: str) -> str:
+    """Collapse runs of spaces inside prose, leaving indented code blocks alone."""
+    if re.search(r"^\s{2,}\S", answer, re.M):
+        return answer  # likely code; indentation is meaningful
+    lines = [re.sub(r"[ \t]{2,}", " ", line).strip() for line in answer.split("\n")]
+    return "\n".join(ln for ln in lines if ln)
+
+
 def clean(answer: str) -> str:
     out = strip_leading_filler(answer.strip())
     out = unwrap_bold(out)
     out = strip_trailing_chatter(out)
+    out = collapse_whitespace(out)
     return out
 
 

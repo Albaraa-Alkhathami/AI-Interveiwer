@@ -221,6 +221,38 @@ class TestSuspiciousSelector:
         assert picked == ["q1", "q3"]
 
 
+class TestMergeGenerated:
+    """Regression: a blind append re-inserted 45 already-applied questions."""
+
+    def test_skips_questions_already_in_the_dataset(self):
+        rows = [{"question": "Existing?", "answer": GOOD_ANSWER, "subject": "Java",
+                 "difficulty": "Easy", "prompt": "p", "data_flag": ""}]
+        good = [
+            {"question": "existing?", "answer": GOOD_ANSWER, "subject": "Java", "difficulty": "Easy"},
+            {"question": "Brand new?", "answer": GOOD_ANSWER, "subject": "Java", "difficulty": "Hard"},
+        ]
+        added, skipped = gq.merge_generated(rows, good)
+        assert (added, skipped) == (1, 1)
+        assert len(rows) == 2
+        assert rows[1]["question"] == "Brand new?"
+
+    def test_skips_duplicates_within_the_same_batch(self):
+        rows: list[dict] = []
+        good = [
+            {"question": "Same?", "answer": GOOD_ANSWER, "subject": "Java", "difficulty": "Easy"},
+            {"question": "same?  ", "answer": GOOD_ANSWER, "subject": "Java", "difficulty": "Easy"},
+        ]
+        added, skipped = gq.merge_generated(rows, good)
+        assert (added, skipped) == (1, 1)
+
+    def test_new_rows_get_a_prompt_and_blank_flag(self):
+        rows: list[dict] = []
+        good = [{"question": "Q?", "answer": GOOD_ANSWER, "subject": "CUDA", "difficulty": "Hard"}]
+        gq.merge_generated(rows, good)
+        assert rows[0]["prompt"] == "Interview questions about CUDA"
+        assert rows[0]["data_flag"] == ""
+
+
 def test_no_metrics_instruction_reaches_the_request(monkeypatch):
     """The extra instruction must actually be in the body, not just defined."""
     seen: list[bytes] = []

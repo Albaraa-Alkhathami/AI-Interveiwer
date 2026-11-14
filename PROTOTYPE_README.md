@@ -78,6 +78,10 @@ python clean_answers.py --apply
 # stops itself on the daily cap and resumes with --resume)
 python regenerate_answers.py --only-template --resume --workers 2 --max-requests 300
 
+# rewrite only the answers that invent metrics or name companies; the prompt
+# forbids figures and any rewrite that still contains one is rejected
+python regenerate_answers.py --only-suspicious --resume --workers 2 --out answers_suspicious.csv
+
 # find and fill coverage gaps
 python generate_questions.py --plan
 python generate_questions.py --auto --budget 25

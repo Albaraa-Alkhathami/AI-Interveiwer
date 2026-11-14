@@ -150,6 +150,30 @@ def parse_pairs(raw: str) -> list[dict]:
     return out
 
 
+def merge_generated(rows: list[dict], good: list[dict]) -> tuple[int, int]:
+    """Append generated rows, skipping any question the dataset already has.
+
+    The generator appends to its own output file between runs, so a merge can
+    legitimately contain rows that were applied earlier; without this guard they
+    would be inserted a second time (it happened: 45 duplicated rows on 14 Nov).
+    Returns (added, skipped).
+    """
+    existing = {norm(r["question"]) for r in rows}
+    added = skipped = 0
+    for r in good:
+        key = norm(r["question"])
+        if key in existing:
+            skipped += 1
+            continue
+        existing.add(key)
+        rows.append({"prompt": f"Interview questions about {r['subject']}",
+                     "question": r["question"], "answer": r["answer"],
+                     "subject": r["subject"], "difficulty": r["difficulty"],
+                     "data_flag": ""})
+        added += 1
+    return added, skipped
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Generate missing subject/difficulty questions")
     ap.add_argument("--plan", action="store_true", help="print the worklist and exit")
@@ -166,11 +190,7 @@ def main() -> None:
         path = BASE / args.apply
         with open(path, encoding="utf-8", newline="") as fh:
             good = [r for r in csv.DictReader(fh) if r["status"] == "ok"]
-        for r in good:
-            rows.append({"prompt": f"Interview questions about {r['subject']}",
-                         "question": r["question"], "answer": r["answer"],
-                         "subject": r["subject"], "difficulty": r["difficulty"],
-                         "data_flag": ""})
+        added, skipped = merge_generated(rows, good)
         counts = Counter(x["subject"] for x in rows)
         for x in rows:
             x["data_flag"] = "limited data (<20 questions)" if counts[x["subject"]] < 20 else ""
@@ -184,7 +204,9 @@ def main() -> None:
             w.writeheader()
             w.writerows(rows)
         os.replace(tmp, SRC)
-        print(f"appended {len(good)} generated questions -> {SRC.name} ({len(rows):,} rows)")
+        if skipped:
+            print(f"skipped {skipped} question(s) already in the dataset")
+        print(f"appended {added} generated questions -> {SRC.name} ({len(rows):,} rows)")
         return
 
     plan = build_plan(rows)
