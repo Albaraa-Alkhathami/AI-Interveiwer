@@ -119,24 +119,22 @@ The user's standing preferences for this project (agreed 14 Nov 2026):
 
 1. **Keep tables and headers.** Dense measurement reports are wanted in tabular form; do not
    flatten them into prose.
-2. **For every decision put to the user, state both branches in this shape**, positives before
-   negatives, no merged paragraph:
+2. **For every decision put to the user, use this two-row table**, signs in the row header and
+   positives before negatives inside each cell:
 
-   ```
-   if we do it:
-   (+) positive aspect
-   (+) positive aspect
-   (-) negative aspect
-
-   if we don't:
-   (+) positive aspect
-   (-) negative aspect
-   (-) negative aspect
+   ```markdown
+   |          | If we do it                                   | If we don't                                  |
+   |----------|-----------------------------------------------|----------------------------------------------|
+   | **(+)**  | positive aspect<br>positive aspect            | positive aspect<br>positive aspect           |
+   | **(-)**  | negative aspect                               | negative aspect<br>negative aspect           |
    ```
 
-   Write the sign as `(+)` / `(-)`, not a leading `+` or `-`: in Markdown a leading plus,
-   minus or asterisk is a list marker, so the chat UI renders all three as the same round
-   bullet and the sign is lost. Wrapping it in parentheses keeps it visible.
+   Why a table and not a bullet list: in Markdown a leading `+`, `-` or `*` is a list marker, so
+   a bullet list renders every point with the same round dot and the sign is lost. Table row
+   headers keep `(+)` and `(-)` visible. Separate multiple points in a cell with `<br>`.
+
+   Add a short prose paragraph after the table with the recommendation and its reason — the table
+   states the trade-off, it does not make the choice.
 
    Every branch carries both signs — a branch with only upsides means the trade-off was not
    found yet. Keep the points distinct between branches; do not mirror the same point twice.
