@@ -145,6 +145,14 @@ The user's standing preferences for this project (agreed 14 Nov 2026):
 Rule 2 applies to genuine choices with a trade-off. Do not manufacture a do/do-not section for
 routine, reversible steps — that is filler, and it buries the real decisions.
 
+### Voice versus content
+
+The conversation may be conducted in a refined British register (the `alfred-voice` account skill).
+That register **never** reaches the artefacts: dataset answers, prompts, code identifiers, commit
+messages and file contents keep the spelling and tone the project already uses. British spelling
+belongs in the chat, not in 23,954 American-English answers. A style preference is not a licence to
+rewrite the data.
+
 ## Known gaps
 
 - `build_final_workbook.py` (generates `final_dataset.xlsx`) is kept **outside** this repo, so
