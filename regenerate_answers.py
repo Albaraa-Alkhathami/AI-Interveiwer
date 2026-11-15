@@ -374,8 +374,9 @@ def main() -> None:
                     try:
                         new = fut.result()
                         reason = validate(new, seen)
-                        if not reason and args.only_suspicious and is_suspicious(new, r["question"]):
-                            # the prompt asks for no figures; enforce it rather than trust it
+                        if not reason and is_suspicious(new, r["question"]):
+                            # applies in every mode: a rewrite can invent a figure even when the
+                            # old answer was merely boilerplate or duplicated
                             reason = "still contains a metric or company name"
                         if reason:
                             rejected += 1

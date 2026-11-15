@@ -20,7 +20,7 @@ The section numbers are kept so older notes still refer to the same work.
 | Subjects under 20 questions | 2 (General Computer Science 12, Version Control 17) |
 | Invented specifics (metrics / companies) | **0** (was 85) |
 | Boilerplate answers | 870 (was 1,058) |
-| Duplicated answer texts | 261 distinct texts across 1,265 rows; 1,145 are rewrite targets |
+| Duplicated answer texts | 255 distinct texts across 1,255 rows; 1,141 are rewrite targets |
 | Default-mode targets | 2,015 (8.4%) |
 | Answers under 100 characters | 89 |
 | Assistant chatter / filler openers | 32 / 12 |
@@ -83,6 +83,12 @@ python regenerate_answers.py --only-duplicated --resume --workers 2 --max-reques
 budget is available — on 16 Nov the probe succeeded and the very next run died after 4 answers.
 Groq exposes only the per-minute remainder in headers, so the only honest signal is the first
 real run; do not announce "quota is back" on a probe.
+
+**Keys pasted into chat keep dying.** Both keys supplied in this conversation authenticated and then
+started returning `401 Invalid API Key` after a handful of calls (one survived six answers, the next
+only four). Treat a pasted key as short-lived: write the key to `.key` in a terminal instead, and if
+401s start mid-run, replace the key rather than assuming a quota problem. A 401 now aborts the run
+cleanly rather than failing every row.
 
 **Second attempt the same day: 0 of 200, every call `429 tokens per day`.** That exposed a real
 defect: the runner submitted every request up front, so it kept firing at a dead budget instead

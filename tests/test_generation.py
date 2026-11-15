@@ -459,3 +459,31 @@ def test_invalid_key_stops_the_run(urlopen):
         assert ra.STOP.is_set()
     finally:
         ra.STOP.clear()
+
+
+def test_invented_figure_is_rejected_in_every_mode(tmp_path, monkeypatch, capsys):
+    """A rewrite can invent a figure even when the old answer was merely boilerplate."""
+    import csv as _csv
+    import sys as _sys
+
+    header = ["prompt", "question", "answer", "subject", "difficulty", "data_flag"]
+    with open(tmp_path / "combined_dataset.csv", "w", encoding="utf-8", newline="") as fh:
+        w = _csv.writer(fh)
+        w.writerow(header)
+        for i in range(4):
+            w.writerow(["p", f"Q{i}", "The same shared answer text.", "S", "Easy", ""])
+
+    monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "call_llm",
+                        lambda *a, **k: "I cut latency by 45 % with a shorter key path.")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(_sys, "argv",
+                        ["regenerate_answers.py", "--only-duplicated", "--workers", "1",
+                         "--out", "out.csv"])
+    ra.STOP.clear()
+    ra.main()
+    ra.STOP.clear()
+
+    rows = list(_csv.DictReader(open(tmp_path / "out.csv", encoding="utf-8", newline="")))
+    assert rows, "no rows were written"
+    assert all(r["status"].startswith("rejected") for r in rows), [r["status"] for r in rows]
