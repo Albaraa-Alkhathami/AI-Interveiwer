@@ -35,4 +35,5 @@ __pycache__/
 # rewrite run artefacts
 answers_suspicious*.csv
 answers_template*.csv
+answers_duplicated*.csv
 run_*.log
