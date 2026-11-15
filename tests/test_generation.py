@@ -446,4 +446,16 @@ def test_quota_stop_cancels_queued_requests(tmp_path, monkeypatch, capsys):
 
     assert calls["n"] <= 4, f"{calls['n']} requests sent despite the cap"
     assert "quota hit" in out
-    assert "STOPPED on quota exhaustion" in out
+    assert "STOPPED on an unrecoverable provider error" in out
+
+
+def test_invalid_key_stops_the_run(urlopen):
+    """A revoked key must abort the run, not retry every remaining row."""
+    urlopen([http_error(401, '{"error":{"message":"Invalid API Key","code":"invalid_api_key"}}')])
+    ra.STOP.clear()
+    try:
+        with pytest.raises(RuntimeError, match="authentication failed"):
+            ra.call_llm("q", "Java", "Easy", "bad-key", "https://api.example/v1", "model")
+        assert ra.STOP.is_set()
+    finally:
+        ra.STOP.clear()

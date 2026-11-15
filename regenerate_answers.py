@@ -192,12 +192,18 @@ def call_llm(question: str, subject: str, difficulty: str,
                 continue
             return content
         except urllib.error.HTTPError as e:
-            body = e.read()[:400]
+            body = e.read()[:600]
             text = body.decode("utf-8", "ignore")
-            last = f"HTTP {e.code}: {body[:160]!r}"
-            if e.code == 429 and "per day" in text:
+            # keep the provider's own words: "per day" vs "per minute" decides whether the
+            # run stops for the day or waits a few seconds, and a truncated repr hides that
+            last = f"HTTP {e.code}: {text[:220]}"
+            if e.code == 429 and ("per day" in text or "TPD" in text or "tokens per d" in text):
                 STOP.set()  # daily quota gone: never retry, never risk a paid overage
                 raise RuntimeError("daily quota exhausted: " + last)
+            if e.code in (401, 403):
+                # a revoked or wrong key will fail every remaining row identically
+                STOP.set()
+                raise RuntimeError("authentication failed: " + last)
             if e.code in (429, 500, 502, 503, 504):
                 # per-minute caps carry a reset hint; wait exactly that long
                 wait = retry_hint(text) or (2 ** attempt)
@@ -397,7 +403,8 @@ def main() -> None:
 
     print(f"\nwrote {out_path.name}: ok={ok:,} rejected={rejected:,} failed={failed:,}")
     if STOP.is_set():
-        print("STOPPED on quota exhaustion — nothing was charged. Continue later with:")
+        print("STOPPED on an unrecoverable provider error (quota or credentials) — nothing was charged.")
+        print("Continue later with:")
         print(resume_hint(args))
     else:
         print("Review a sample, then run: python regenerate_answers.py --apply", args.out)
