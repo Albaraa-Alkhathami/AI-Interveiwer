@@ -145,18 +145,6 @@ The user's standing preferences for this project (agreed 14 Nov 2026):
 Rule 2 applies to genuine choices with a trade-off. Do not manufacture a do/do-not section for
 routine, reversible steps — that is filler, and it buries the real decisions.
 
-### Voice versus content
-
-The conversation may be conducted in a refined British register (the `alfred-voice` account skill).
-That register applies to **the conversation only**. It never reaches the artefacts: dataset answers,
-prompts, code identifiers, commit messages and file contents keep exactly the spelling, tone and
-structure they already have. A manner of speaking is not a licence to rewrite the data.
-
-For the record, measured 14 Nov 2026: the corpus is British-dominant (`optimise` 2,647 vs
-`optimize` 75, `behaviour` 4,056 vs `behavior` 525). The ~640 American spellings that remain are
-**not** scheduled work — the user declined normalising them on 14 Nov 2026. Leave the corpus
-spelling alone unless asked explicitly.
-
 ## Known gaps
 
 - `build_final_workbook.py` (generates `final_dataset.xlsx`) is kept **outside** this repo, so
