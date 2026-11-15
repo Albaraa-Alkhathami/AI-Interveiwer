@@ -411,3 +411,39 @@ class TestResumeHint:
     def test_default_mode_has_no_mode_flag(self):
         hint = ra.resume_hint(self._args())
         assert "--only-" not in hint
+
+
+def test_quota_stop_cancels_queued_requests(tmp_path, monkeypatch, capsys):
+    """On a daily cap the run must stop after one chunk, not fire every queued request."""
+    import csv as _csv
+    import sys as _sys
+
+    header = ["prompt", "question", "answer", "subject", "difficulty", "data_flag"]
+    with open(tmp_path / "combined_dataset.csv", "w", encoding="utf-8", newline="") as fh:
+        w = _csv.writer(fh)
+        w.writerow(header)
+        for i in range(12):
+            w.writerow(["p", f"Q{i}", "The same shared answer text.", "S", "Easy", ""])
+
+    calls = {"n": 0}
+
+    def quota_dead(*a, **k):
+        calls["n"] += 1
+        ra.STOP.set()
+        raise RuntimeError("daily quota exhausted: HTTP 429")
+
+    ra.STOP.clear()
+    monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "call_llm", quota_dead)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(_sys, "argv",
+                        ["regenerate_answers.py", "--only-duplicated", "--workers", "2",
+                         "--out", "out.csv"])
+
+    ra.main()
+    out = capsys.readouterr().out
+    ra.STOP.clear()
+
+    assert calls["n"] <= 4, f"{calls['n']} requests sent despite the cap"
+    assert "quota hit" in out
+    assert "STOPPED on quota exhaustion" in out

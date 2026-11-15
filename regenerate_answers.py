@@ -348,41 +348,52 @@ def main() -> None:
         writer = csv.DictWriter(fh, fieldnames=OUT_COLS)
         if mode == "w":
             writer.writeheader()
+        # Submit in small chunks rather than all at once: once the provider reports a daily
+        # cap, every queued request would still fire against a dead budget. Chunking bounds
+        # the waste to one round of workers.
+        chunk_size = max(args.workers * 2, 1)
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
-            futures = {
-                pool.submit(call_llm, r["question"], r["subject"], r["difficulty"],
-                            api_key, base_url, model,
-                            extra=NO_METRICS if args.only_suspicious else ""): r
-                for r in targets
-            }
-            for fut in as_completed(futures):
-                r = futures[fut]
-                done += 1
-                try:
-                    new = fut.result()
-                    reason = validate(new, seen)
-                    if not reason and args.only_suspicious and is_suspicious(new, r["question"]):
-                        # the prompt asks for no figures; enforce it rather than trust it
-                        reason = "still contains a metric or company name"
-                    if reason:
-                        rejected += 1
+            queue = list(targets)
+            while queue and not STOP.is_set():
+                chunk, queue = queue[:chunk_size], queue[chunk_size:]
+                futures = {
+                    pool.submit(call_llm, r["question"], r["subject"], r["difficulty"],
+                                api_key, base_url, model,
+                                extra=NO_METRICS if args.only_suspicious else ""): r
+                    for r in chunk
+                }
+                for fut in as_completed(futures):
+                    r = futures[fut]
+                    done += 1
+                    try:
+                        new = fut.result()
+                        reason = validate(new, seen)
+                        if not reason and args.only_suspicious and is_suspicious(new, r["question"]):
+                            # the prompt asks for no figures; enforce it rather than trust it
+                            reason = "still contains a metric or company name"
+                        if reason:
+                            rejected += 1
+                            writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
+                                             "old_answer": r["answer"], "new_answer": new,
+                                             "status": f"rejected: {reason}"})
+                        else:
+                            seen.add(norm(new))
+                            ok += 1
+                            writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
+                                             "old_answer": r["answer"], "new_answer": new,
+                                             "status": "ok"})
+                    except Exception as e:  # noqa: BLE001
+                        failed += 1
                         writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
-                                         "old_answer": r["answer"], "new_answer": new,
-                                         "status": f"rejected: {reason}"})
-                    else:
-                        seen.add(norm(new))
-                        ok += 1
-                        writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
-                                         "old_answer": r["answer"], "new_answer": new,
-                                         "status": "ok"})
-                except Exception as e:  # noqa: BLE001
-                    failed += 1
-                    writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
-                                     "old_answer": r["answer"], "new_answer": "",
-                                     "status": f"error: {e}"})
-                if done % 100 == 0 or done == len(targets):
+                                         "old_answer": r["answer"], "new_answer": "",
+                                         "status": f"error: {e}"})
+                    if done % 100 == 0 or done == len(targets):
+                        fh.flush()
+                        print(f"  {done:,}/{len(targets):,}  ok={ok:,} rejected={rejected:,} failed={failed:,}")
+                if STOP.is_set():
                     fh.flush()
-                    print(f"  {done:,}/{len(targets):,}  ok={ok:,} rejected={rejected:,} failed={failed:,}")
+                    print(f"  quota hit after {done:,} request(s) - {len(queue):,} left unsent")
+                    break
 
     print(f"\nwrote {out_path.name}: ok={ok:,} rejected={rejected:,} failed={failed:,}")
     if STOP.is_set():

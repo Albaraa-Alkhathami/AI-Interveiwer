@@ -84,6 +84,12 @@ budget is available — on 16 Nov the probe succeeded and the very next run died
 Groq exposes only the per-minute remainder in headers, so the only honest signal is the first
 real run; do not announce "quota is back" on a probe.
 
+**Second attempt the same day: 0 of 200, every call `429 tokens per day`.** That exposed a real
+defect: the runner submitted every request up front, so it kept firing at a dead budget instead
+of stopping. Requests are now submitted in chunks of `2 x workers` and the run aborts on the
+first cap signal ("quota hit after N request(s) - M left unsent"), which is also what the
+"never retry a per-day 429" rule requires in practice.
+
 Different questions carrying identical answer text. Question-level dedupe cannot see this: each
 question is unique, so the defect is invisible to a uniqueness check while the answer next to it
 belongs to an unrelated question. Worse than boilerplate, because a templated answer reads as
