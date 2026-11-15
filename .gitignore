@@ -31,3 +31,8 @@ __pycache__/
 .env
 
 
+
+# rewrite run artefacts
+answers_suspicious*.csv
+answers_template*.csv
+run_*.log

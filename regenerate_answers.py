@@ -284,7 +284,9 @@ def main() -> None:
     targets = pick_targets(rows, only_template=args.only_template,
                            only_suspicious=args.only_suspicious)
     if not targets:
-        sys.exit("nothing to regenerate — no templated or duplicated answers found")
+        if args.only_suspicious:
+            sys.exit("nothing to regenerate - no invented metrics or company names left")
+        sys.exit("nothing to regenerate - no templated or duplicated answers found")
 
     if args.dry_run:
         dry_run(rows, targets, args.only_template, args.only_suspicious)
