@@ -59,6 +59,7 @@ charged. Resume tomorrow with the same command; `--resume` skips the 188 already
 | Boilerplate | 870 | "A good answer should address the requirements…" — visible filler |
 | Under 100 characters | 89 | Placeholders, not explanations |
 | Mid-text chatter | 32 | "Feel free to ask…" surviving the mechanical pass |
+| Code fences | 4 | ```` ``` ```` blocks (Vuex, React forwardRef, useEffect, styled-components) — need a prose rewrite, not a mechanical strip |
 | Leading filler | 12 | "Certainly." openers |
 
 `clean_answers.py` cannot fix these — they need generated text. Run default mode, which targets

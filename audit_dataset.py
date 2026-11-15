@@ -33,7 +33,8 @@ CHATTER = re.compile(
     re.IGNORECASE,
 )
 FILLER = re.compile(r"^\s*(certainly|sure|of course)\s*[.,!]\s*", re.IGNORECASE)
-MARKDOWN = re.compile(r"(\*\*[^*\n]+\*\*|```|^#{1,4} |^\s*[-*] )", re.MULTILINE)
+# Bold needs no spaces just inside the asterisks, so Python's "x ** 2" is not flagged.
+MARKDOWN = re.compile(r"(\*\*(?=\S)[^*\n]+(?<=\S)\*\*|```|^#{1,4} |^\s*[-*] )", re.MULTILINE)
 # Numbers that read as a personal credential or tenure rather than a mechanism: "I scored
 # 860 on the TOEFL", "six years" written as a digit. A warning, never a blocker, because
 # some questions legitimately supply the number.

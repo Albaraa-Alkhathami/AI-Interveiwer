@@ -163,8 +163,9 @@ routine, reversible steps — that is filler, and it buries the real decisions.
 - `regenerate_answers.py` and `generate_questions.py` have no end-to-end test against a real
   endpoint; everything is mocked.
 - `audit_dataset.py` is also embedded in an account skill (`interview-dataset-style`) so it is
-  available outside this repo; keep the two copies in step if you change it. Last synced
-  16 Nov 2026, after the question-aware and numeric-personal-claims changes.
+  available outside this repo; keep the two copies in step if you change it. Synced 16 Nov 2026,
+  before the markdown-exponent fix — the skill's copy still flags `x ** 2` as bold, so re-save it
+  if that matters for other projects.
 - The repo history was rewritten on 14 Nov 2026 to drop duplicate 60 MB dataset blobs. A safety
   bundle exists locally (`git-history-backup-2026-11-14.bundle`, gitignored). Adding the dataset
   as a fresh commit costs ~27 MB packed, so prefer release assets over repeated commits.

@@ -143,3 +143,24 @@ def test_personal_number_supplied_by_the_question_is_not_counted(tmp_path):
     ])
     out = run(str(csv_path))
     assert "numeric personal claims: 0" in out.stdout
+
+
+def test_python_exponent_is_not_markdown(tmp_path):
+    """`x ** 2` is arithmetic; only a matched pair without inner spaces is bold."""
+    csv_path = tmp_path / "exp.csv"
+    write_csv(csv_path, [
+        ["p", "How do you compute RMSE?", "I square each error with ** 2 then average.",
+         "ML", "Easy"],
+    ])
+    out = run(str(csv_path))
+    assert "markdown            : 0" in out.stdout
+
+
+def test_real_bold_is_still_flagged(tmp_path):
+    csv_path = tmp_path / "bold.csv"
+    write_csv(csv_path, [
+        ["p", "How do you compute RMSE?", "I use **mean squared error** and take the root.",
+         "ML", "Easy"],
+    ])
+    out = run(str(csv_path))
+    assert "markdown            : 1" in out.stdout
