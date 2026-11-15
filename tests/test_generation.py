@@ -434,6 +434,7 @@ def test_quota_stop_cancels_queued_requests(tmp_path, monkeypatch, capsys):
 
     ra.STOP.clear()
     monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "SRC", tmp_path / "combined_dataset.csv")
     monkeypatch.setattr(ra, "call_llm", quota_dead)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(_sys, "argv",
@@ -474,6 +475,7 @@ def test_invented_figure_is_rejected_in_every_mode(tmp_path, monkeypatch, capsys
             w.writerow(["p", f"Q{i}", "The same shared answer text.", "S", "Easy", ""])
 
     monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "SRC", tmp_path / "combined_dataset.csv")
     monkeypatch.setattr(ra, "call_llm",
                         lambda *a, **k: "I cut latency by 45 % with a shorter key path.")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -487,3 +489,37 @@ def test_invented_figure_is_rejected_in_every_mode(tmp_path, monkeypatch, capsys
     rows = list(_csv.DictReader(open(tmp_path / "out.csv", encoding="utf-8", newline="")))
     assert rows, "no rows were written"
     assert all(r["status"].startswith("rejected") for r in rows), [r["status"] for r in rows]
+
+
+def test_apply_refuses_an_invented_figure(tmp_path, monkeypatch, capsys):
+    """A run file made before a guard existed must still be checked when merged."""
+    import csv as _csv
+
+    header = ["prompt", "question", "answer", "subject", "difficulty", "data_flag"]
+    with open(tmp_path / "combined_dataset.csv", "w", encoding="utf-8", newline="") as fh:
+        w = _csv.writer(fh)
+        w.writerow(header)
+        w.writerow(["p", "Q1", "original answer text.", "S", "Easy", ""])
+
+    out = tmp_path / "out.csv"
+    with open(out, "w", encoding="utf-8", newline="") as fh:
+        w = _csv.DictWriter(fh, fieldnames=["question", "subject", "difficulty",
+                                            "old_answer", "new_answer", "status"])
+        w.writeheader()
+        w.writerow({"question": "Q1", "subject": "S", "difficulty": "Easy",
+                    "old_answer": "original answer text.",
+                    "new_answer": "I cut memory use by 60 % on the same hardware.",
+                    "status": "ok"})
+
+    monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "SRC", tmp_path / "combined_dataset.csv")
+    import sys as _sys
+    monkeypatch.setattr(_sys, "argv",
+                        ["regenerate_answers.py", "--apply", "out.csv"])
+    ra.main()
+    text = capsys.readouterr().out
+
+    rows = list(_csv.DictReader(open(tmp_path / "combined_dataset.csv", encoding="utf-8",
+                                   newline="")))
+    assert rows[0]["answer"] == "original answer text.", "invented figure was applied"
+    assert "invented specifics" in text

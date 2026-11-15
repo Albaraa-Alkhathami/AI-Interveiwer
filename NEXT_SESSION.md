@@ -20,7 +20,7 @@ The section numbers are kept so older notes still refer to the same work.
 | Subjects under 20 questions | 2 (General Computer Science 12, Version Control 17) |
 | Invented specifics (metrics / companies) | **0** (was 85) |
 | Boilerplate answers | 870 (was 1,058) |
-| Duplicated answer texts | 255 distinct texts across 1,255 rows; 1,141 are rewrite targets |
+| Duplicated answer texts | 254 distinct texts across 1,250 rows; ~1,240 are rewrite targets |
 | Default-mode targets | 2,015 (8.4%) |
 | Answers under 100 characters | 89 |
 | Assistant chatter / filler openers | 32 / 12 |
@@ -83,6 +83,10 @@ python regenerate_answers.py --only-duplicated --resume --workers 2 --max-reques
 budget is available — on 16 Nov the probe succeeded and the very next run died after 4 answers.
 Groq exposes only the per-minute remainder in headers, so the only honest signal is the first
 real run; do not announce "quota is back" on a probe.
+
+**16 Nov, third attempt (valid key on disk):** 15 accepted, 1 rejected, then `429 ... tokens per
+   day` — the cap itself, confirmed by the now-untruncated error text. The key was valid; the
+   budget was not. Applied and audited: shared answers 1,265 → 1,250.
 
 **Keys pasted into chat keep dying.** Both keys supplied in this conversation authenticated and then
 started returning `401 Invalid API Key` after a handful of calls (one survived six answers, the next

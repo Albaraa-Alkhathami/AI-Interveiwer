@@ -285,10 +285,20 @@ def main() -> None:
             fixes = [r for r in csv.DictReader(fh) if r["status"] == "ok"]
         by_q = {norm(r["question"]): r["new_answer"].strip() for r in fixes}
         applied = 0
+        refused: list[tuple[str, str]] = []
         for r in rows:
             k = norm(r["question"])
             if k in by_q:
-                r["answer"] = by_q[k]
+                new = by_q[k]
+                # Validate again here: a run file may predate a guard, and merging is the last
+                # chance to keep an invented figure out of the dataset.
+                if not new:
+                    refused.append((r["question"], "empty answer"))
+                    continue
+                if is_suspicious(new, r["question"]):
+                    refused.append((r["question"], "invented specifics"))
+                    continue
+                r["answer"] = new
                 applied += 1
         backup = BASE / "combined_dataset_before_regeneration.csv"
         if not backup.exists():
@@ -301,6 +311,10 @@ def main() -> None:
             w.writerows(rows)
         os.replace(tmp, SRC)
         print(f"applied {applied:,} new answers -> {SRC.name}")
+        if refused:
+            print(f"refused {len(refused):,} row(s) at apply time:")
+            for q, why in refused[:5]:
+                print(f"  {why}: {q[:70]}")
         return
 
     targets = pick_targets(rows, only_template=args.only_template,
