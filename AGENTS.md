@@ -72,6 +72,7 @@ enforces the mechanical ones:
 | `generate_questions.py` | fill coverage gaps | `--plan`, `--auto`, `--budget`, `--subject`, `--difficulty`, `--count`, `--apply` |
 | `clean_answers.py` | mechanical answer fixes, no model | dry run by default, `--apply`, `--show N` |
 | `audit_dataset.py` | read-only quality audit, no model | `--question/--answer/--subject/--difficulty`, `--json`; exits 1 on blockers |
+| `build_final_workbook.py` | regenerate `final_dataset.xlsx` from the CSV | none; needs `openpyxl`, writes next to the script |
 
 ## Post-edit checklist
 
@@ -83,7 +84,8 @@ Run this after **any** dataset or script change:
    batch; it exits non-zero on empty fields, duplicate questions or invented specifics.
 2. `python clean_answers.py` (dry run) — confirm you did not introduce chatter, filler,
    markdown or typographic punctuation.
-3. Rebuild the workbook if `combined_dataset.csv` changed.
+3. Rebuild the workbook if `combined_dataset.csv` changed: `python build_final_workbook.py`
+   (needs `openpyxl`). It prints rows, subject count and the saved path.
 4. **Index rebuild is usually unnecessary.** The cache fingerprint hashes only
    `subject + question`, so answer-only edits keep the existing `.npy`. Changing questions,
    subjects or row order **does** invalidate it: `python search_app.py --rebuild` (~10 min).
@@ -145,13 +147,19 @@ The user's standing preferences for this project (agreed 14 Nov 2026):
    request would damage the project, argue against it before doing it. Agreement is not a
    deliverable.
 
+4. **Do not ask before doing routine work.** When work from the plan remains and nothing blocks
+   it, carry on and report afterwards. Stop only for actions that are destructive or hard to
+   undo, spend money, or publish something externally — and for genuinely missing information
+   (a credential, a choice between incompatible goals). "Shall I proceed?" is not a question to
+   ask when the answer was already agreed.
+
 Rule 2 applies to genuine choices with a trade-off. Do not manufacture a do/do-not section for
 routine, reversible steps — that is filler, and it buries the real decisions.
 
 ## Known gaps
 
-- `build_final_workbook.py` (generates `final_dataset.xlsx`) is kept **outside** this repo, so
-  the workbook cannot be rebuilt from a clean clone.
+- `final_dataset.xlsx` is committed (≈10 MB per version). Rebuilding it rewrites that blob, so
+  rebuild once after a batch of dataset changes rather than after every apply.
 - `regenerate_answers.py` and `generate_questions.py` have no end-to-end test against a real
   endpoint; everything is mocked.
 - `audit_dataset.py` is also embedded in an account skill (`interview-dataset-style`) so it is
