@@ -15,9 +15,9 @@ defect counts in one pass (it exits non-zero while invented specifics remain).
 | Coverage | 138/138 cells (Easy/Medium/Hard) |
 | Subjects under 20 questions | 2 (General Computer Science 12, Version Control 17) |
 | Invented specifics (metrics / companies) | **0** (was 85) |
-| Boilerplate answers | 1,058 |
-| Duplicated answer texts | 262 distinct texts across 1,357 rows; 1,145 are rewrite targets |
-| Default-mode targets | 2,203 (9.2%) |
+| Boilerplate answers | 870 (was 1,058) |
+| Duplicated answer texts | 261 distinct texts across 1,265 rows; 1,145 are rewrite targets |
+| Default-mode targets | 2,015 (8.4%) |
 | Answers under 100 characters | 89 |
 | Assistant chatter / filler openers | 32 / 12 |
 | Markdown leakage / typographic punctuation | 3 / 0 |
@@ -44,11 +44,15 @@ python clean_answers.py && python clean_answers.py --apply   # new text reintrod
 Watch out: the model emits non-breaking hyphens and curly apostrophes even when the prose is
 otherwise clean, so **the cleaner must run after every apply** or the typography count regresses.
 
-## 2. Chatter, short answers, remaining boilerplate — **next up**
+## 2. Chatter, short answers, remaining boilerplate — **in progress**
+
+15 Nov 2026: 188 boilerplate answers rewritten in one capped run (4 rejected, 8 failed), taking
+the count from 1,058 to **870**. The run then stopped cleanly on the daily token cap — nothing was
+charged. Resume tomorrow with the same command; `--resume` skips the 188 already done.
 
 | Target | Rows | Why it matters |
 |---|---:|---|
-| Boilerplate | 1,058 | "A good answer should address the requirements…" — visible filler |
+| Boilerplate | 870 | "A good answer should address the requirements…" — visible filler |
 | Under 100 characters | 89 | Placeholders, not explanations |
 | Mid-text chatter | 32 | "Feel free to ask…" surviving the mechanical pass |
 | Leading filler | 12 | "Certainly." openers |
