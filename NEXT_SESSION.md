@@ -1,109 +1,104 @@
 # Next session — priority order
 
-Agreed 14 Nov 2026. **Improving existing rows comes before generating new ones**, so the
+Updated 15 Nov 2026. **Improving existing rows comes before generating new ones**, so the
 remaining daily token budget is spent in this order and generation only gets the leftovers.
 
-Order: (1) fabricated specifics → (2) chatter and short answers → (3) verify the two validator
-fixes on live traffic → (4) shared answers → (5) generation.
+Before spending anything: `python audit_dataset.py combined_dataset.csv` gives the current
+defect counts in one pass (it exits non-zero while invented specifics remain).
 
-## 1. Fabricated specifics (in progress — 27 of 108 done)
+## Where the dataset stands (measured 15 Nov 2026)
 
-108 answers carry invented metrics ("we compressed the model size by 4.3x", "60% less
-memory") or name real companies (Google, Amazon, Netflix…). Highest-risk content: it reads as
-verified results.
+| Metric | Value |
+|---|---:|
+| Rows | 23,954 |
+| Subjects | 46 |
+| Coverage | 138/138 cells (Easy/Medium/Hard) |
+| Subjects under 20 questions | 2 (General Computer Science 12, Version Control 17) |
+| Invented specifics (metrics / companies) | 85 (54 / 31) |
+| Boilerplate answers | 1,059 |
+| Duplicated answer texts | 264 distinct texts across 1,360 rows; 1,150 are rewrite targets |
+| Default-mode targets | 2,209 (9.2%) |
+| Answers under 100 characters | 90 |
+| Assistant chatter / filler openers | 32 / 12 |
+| Markdown leakage / typographic punctuation | 3 / 0 |
 
-Tooling is in place: `--only-suspicious` selects exactly these rows, appends `NO_METRICS` to the
-prompt, and **rejects** any rewrite that still contains a figure or company name.
+## 1. Fabricated specifics — 85 rows remaining
 
-**Remaining: 85 rows** (54 with metrics, 31 naming companies). Note that some early rewrites
-slipped a hedged figure ("about 30%") because the question itself asks "how much did you
-improve" — the rejection rule catches those, so expect a reject rate and rerun until the count
-stops falling. Each run today yielded 9–18 answers before the daily cap closed.
+Highest-risk content: an invented figure ("we compressed the model size by 4.3x") reads as a
+verified result. `--only-suspicious` appends `NO_METRICS` to the prompt and **rejects** any
+rewrite that still contains a figure or company name, so expect a reject rate: those rows need
+a second pass, which is normal, not a failure.
 
 ```bash
 export OPENAI_API_KEY=... OPENAI_BASE_URL=https://api.groq.com/openai/v1 OPENAI_MODEL=openai/gpt-oss-20b
-python regenerate_answers.py --only-suspicious --resume --workers 2 --max-requests 250 --out answers_suspicious.csv
-python regenerate_answers.py --apply answers_suspicious.csv
+python regenerate_answers.py --only-suspicious --resume --workers 2 --max-requests 250 --out answers_suspicious2.csv
+python regenerate_answers.py --apply answers_suspicious2.csv
+python regenerate_answers.py --only-suspicious --dry-run    # target count must fall
 ```
+
+Start there rather than at (2): these are the only rows that can mislead a reader into thinking
+a fabricated result is real, and they are 85 rows, not 2,000.
 
 ## 2. Chatter, short answers, remaining boilerplate
 
-Ordered by how visible the defect is:
-
-| Target | Rows | Why |
+| Target | Rows | Why it matters |
 |---|---:|---|
-| Remaining boilerplate | 1,059 | Most visible: "A good answer should address the requirements…" |
-| Under 100 characters | 91 | Placeholders, not explanations (34 were too thin for the cleaner) |
-| Mid-text chatter | 28 | "Feel free to ask…" left after the mechanical pass |
-| Leading filler | 9 | "Certainly." openers |
+| Boilerplate | 1,059 | "A good answer should address the requirements…" — visible filler |
+| Under 100 characters | 90 | Placeholders, not explanations |
+| Mid-text chatter | 32 | "Feel free to ask…" surviving the mechanical pass |
+| Leading filler | 12 | "Certainly." openers |
 
-`clean_answers.py` cannot fix these — they need generated text.
-
-## 3. Confirm the two validator/completion fixes on live traffic
-
-Both are fixed and unit-tested (commit `b85a0b9`), with mocked HTTP only — they have not
-yet been exercised against the real API. Watch for these on the first real run:
-
-| Fix | What to look for |
-|---|---|
-| Banned-phrase check now compares lowercased patterns | No accepted answer contains "A good answer should address the requirements…" or "Certainly!". A non-zero `rejected: contains banned phrase` count is now *expected*, not a bug. |
-| Empty completion is a retryable failure | `failed` counts may rise and `ok=0` should never be reported for a cell that actually returned nothing. Log lines like `empty completion (no content in response)` are the guard working. |
-
-If either misbehaves, the failing case belongs in `tests/test_generation.py` first.
-
-## 4. Shared answers (1,362 rows)
-
-**1,362 rows share their answer text with another row** — 265 distinct answers reused across
-different questions. The question-level dedupe cannot see this: every question is unique, but
-the answer next to it may have been copied from an unrelated one. This is worse than the
-boilerplate rows, because a templated answer reads as generic while a shared answer reads as
-specific and answers the wrong question.
-
-Targeted by `regenerate_answers.py` **without** `--only-template` (its default mode is
-boilerplate + duplicated answers). Re-run `--dry-run` first — the count now includes the
-remaining boilerplate, so the target list is larger than 1,362.
-
-## 5. Generation with whatever budget remains
-
-- General Computer Science (12 questions) and Version Control (17) are still flagged
-  `limited data (<20 questions)`.
-- Run `generate_questions.py --plan` first; it recomputes the deficits from the current file.
-
-## Repo size — **done 14 Nov 2026**
-
-History previously stored 7 copies of `combined_dataset.csv` (≈421 MB uncompressed) plus old
-workbook snapshots, for a **155 MB** `.git`.
-
-What was done, without touching working files (all checksums verified identical before/after):
+`clean_answers.py` cannot fix these — they need generated text. Run default mode, which targets
+boilerplate plus duplicated answers:
 
 ```bash
-git bundle create git-history-backup-2026-11-14.bundle --all   # 81 MB safety net
-python -m pip install git-filter-repo
-git filter-repo --path combined_dataset.csv --path final_dataset.xlsx --invert-paths --force
-git remote add origin https://github.com/Albaraa-Alkhathami/AI-Interveiwer.git
-git push --force origin main
+python regenerate_answers.py --only-template --resume --workers 2 --max-requests 250 --out answers_template.csv
 ```
 
-Result: **155 MB → 27 MB**, 15 commits of code history retained, and the current dataset kept
-as one snapshot commit so a fresh clone still contains the data.
+## 3. Shared answers — 1,360 rows (1,150 rewrite targets)
 
-Consequences to remember:
+Different questions carrying identical answer text. Question-level dedupe cannot see this: each
+question is unique, so the defect is invisible to a uniqueness check while the answer next to it
+belongs to an unrelated question. Worse than boilerplate, because a templated answer reads as
+generic whereas a shared answer reads as specific and answers the wrong thing.
 
-- History no longer contains superseded dataset versions — `git log` cannot recover an older
-  `combined_dataset.csv`. The 81 MB bundle (`git-history-backup-2026-11-14.bundle`, gitignored)
-  holds the pre-rewrite history if an old version is ever needed.
-- Any other clone of this repo must be re-cloned; the old commits no longer exist remotely.
-- Every future dataset commit adds ~60 MB again (≈15–35 MB packed). If that becomes a problem,
-  publish the dataset as a GitHub Release asset instead of committing it, and keep it gitignored.
-- Never run `git gc --prune=now`: unreachable objects may hold abandoned work.
+Covered by default mode (step 2), so this needs no separate command — just expect the target list
+to stay large until step 2 clears it.
 
-## Notes for the run
+## 4. Generation — only with leftovers
 
-- Free tier: **8,000 tokens/minute** and **200,000 tokens/day**. Expect ~215 answers per day,
-  not the 330 an earlier estimate assumed.
-- `generate_questions.py` appends to its output CSV. If two runs are merged, dedupe before
-  `--apply` (this caused 45 duplicate rows on 14 Nov).
-- `--resume` skips rows already marked `ok` in the output file, so a stopped run is safe to
-  continue.
-- After applying: `build_final_workbook.py`, then `python -m pytest tests -q`. Only question
-  or subject changes require `search_app.py --rebuild`; answer-only edits keep the cache.
+- `generate_questions.py --plan` recomputes deficits from the current file.
+- General Computer Science (12) and Version Control (17) are the only cells under 20 questions.
+- `--apply` dedupes against the dataset; `--resume` skips rows already marked `ok`.
+
+## 5. Live-traffic checks still owed
+
+Both validator fixes (`b85a0b9`) are unit-tested against mocked HTTP and have never met the real
+API. On the first run, watch for:
+
+| Behaviour | Expected on live traffic |
+|---|---|
+| Banned-phrase check now lowercases the pattern | A non-zero `rejected: contains banned phrase` count is the fix working, not a bug |
+| Empty completion is a retryable failure | `empty completion (no content in response)` lines, and never `ok` for a cell that returned nothing |
+
+If either misbehaves, add the failing case to `tests/test_generation.py` before touching the script.
+
+## Decisions already taken (do not reopen)
+
+| Decision | Outcome |
+|---|---|
+| Normalise the ~640 American spellings in a British-dominant corpus | **Declined** 14 Nov 2026 — the corpus stays as it is |
+| Model for rewriting | `openai/gpt-oss-20b` with `reasoning_effort: "low"`; the rejection guard protects quality, so throughput wins |
+| Dataset in git history | History rewritten 14 Nov 2026 (155 MB → 27 MB) to drop duplicate blobs; do not re-add old versions |
+
+## Run notes
+
+- Free tier: **8,000 tokens/minute**, **200,000 tokens/day** → ~215 answers/day, not the 330 an
+  earlier estimate assumed. The per-day token bucket binds first.
+- **Never retry a `429` that says `per day`** — stop the run; resume tomorrow with `--resume`.
+- `generate_questions.py` appends to its output CSV; two merged runs duplicate rows (this caused
+  45 duplicate rows on 14 Nov).
+- After each apply: `python -m pytest tests -q`, then `python audit_dataset.py combined_dataset.csv`,
+  then rebuild the workbook. Only question, subject or row-order changes need
+  `search_app.py --rebuild` (~10 min); answer-only edits keep the embedding cache.
+- Stale figures in `DATA_LIMITATIONS.md` are treated as bugs — update them whenever counts move.
