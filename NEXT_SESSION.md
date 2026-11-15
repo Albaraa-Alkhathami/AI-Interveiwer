@@ -68,7 +68,21 @@ boilerplate plus duplicated answers:
 python regenerate_answers.py --only-template --resume --workers 2 --max-requests 250 --out answers_template.csv
 ```
 
-## 3. Shared answers — 1,357 rows (1,145 rewrite targets)
+## 3. Shared answers — 1,265 rows (1,145 rewrite targets)
+
+**16 Nov 2026, first attempt:** the daily cap was already spent. 200 requests returned 4 ok and
+196 `429 ... tokens per day`, and the run stopped cleanly. Nothing was applied, so the dataset is
+unchanged. A new `--only-duplicated` mode now targets exactly these rows (1,526 targets, 381 of
+them also boilerplate) instead of dragging the boilerplate pool in:
+
+```bash
+python regenerate_answers.py --only-duplicated --resume --workers 2 --max-requests 200 --out answers_duplicated.csv
+```
+
+**Lesson worth keeping:** a 200 response on a probe proves *some* budget remains, not that a day's
+budget is available — on 16 Nov the probe succeeded and the very next run died after 4 answers.
+Groq exposes only the per-minute remainder in headers, so the only honest signal is the first
+real run; do not announce "quota is back" on a probe.
 
 Different questions carrying identical answer text. Question-level dedupe cannot see this: each
 question is unique, so the defect is invisible to a uniqueness check while the answer next to it

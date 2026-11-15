@@ -96,7 +96,8 @@ def norm(text: str) -> str:
 
 
 def pick_targets(rows: list[dict], only_template: bool = False,
-                 only_suspicious: bool = False) -> list[dict]:
+                 only_suspicious: bool = False,
+                 only_duplicated: bool = False) -> list[dict]:
     if only_suspicious:
         return [r for r in rows if is_suspicious(r["answer"], r["question"])]
     counts = Counter(norm(r["answer"]) for r in rows)
@@ -104,7 +105,11 @@ def pick_targets(rows: list[dict], only_template: bool = False,
     for r in rows:
         templated = any(t in r["answer"] for t in TEMPLATES)
         duplicated = counts[norm(r["answer"])] > 1
-        if templated or (duplicated and not only_template):
+        if only_duplicated:
+            # shared answer text is the worst defect: the answer fits a different question
+            if duplicated:
+                picked.append(r)
+        elif templated or (duplicated and not only_template):
             picked.append(r)
     return picked
 
@@ -206,8 +211,9 @@ def call_llm(question: str, subject: str, difficulty: str,
 
 
 def dry_run(rows: list[dict], targets: list[dict], only_template: bool = False,
-            only_suspicious: bool = False) -> None:
+            only_suspicious: bool = False, only_duplicated: bool = False) -> None:
     mode = ("invented metrics / company names only" if only_suspicious
+            else "duplicated answers only" if only_duplicated
             else "boilerplate answers only" if only_template
             else "boilerplate + duplicated answers")
     print(f"mode                 : {mode}")
@@ -235,6 +241,14 @@ def dry_run(rows: list[dict], targets: list[dict], only_template: bool = False,
     print(USER_TMPL.format(subject=r["subject"], difficulty=r["difficulty"], question=r["question"])[:400])
 
 
+def resume_hint(args) -> str:
+    """Command that continues this run, echoing the mode it was started with."""
+    flag = ("--only-suspicious " if args.only_suspicious
+            else "--only-duplicated " if args.only_duplicated
+            else "--only-template " if args.only_template else "")
+    return f"  python regenerate_answers.py {flag}--resume --out {args.out}"
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Regenerate weak answers with an LLM")
     ap.add_argument("--dry-run", action="store_true", help="show targets, cost and a sample prompt")
@@ -243,6 +257,8 @@ def main() -> None:
                     help="regenerate only the boilerplate answers (smaller, cheaper run)")
     ap.add_argument("--only-suspicious", action="store_true",
                     help="regenerate only answers that invent metrics or name companies")
+    ap.add_argument("--only-duplicated", action="store_true",
+                    help="regenerate only answers whose text is shared with another row")
     ap.add_argument("--workers", type=int, default=8, help="parallel requests (default 8)")
     ap.add_argument("--out", default="answers_regenerated.csv", help="output CSV")
     ap.add_argument("--max-requests", type=int, help="hard cap on API calls this run")
@@ -282,14 +298,18 @@ def main() -> None:
         return
 
     targets = pick_targets(rows, only_template=args.only_template,
-                           only_suspicious=args.only_suspicious)
+                           only_suspicious=args.only_suspicious,
+                           only_duplicated=args.only_duplicated)
     if not targets:
         if args.only_suspicious:
             sys.exit("nothing to regenerate - no invented metrics or company names left")
+        if args.only_duplicated:
+            sys.exit("nothing to regenerate - no shared answer text left")
         sys.exit("nothing to regenerate - no templated or duplicated answers found")
 
     if args.dry_run:
-        dry_run(rows, targets, args.only_template, args.only_suspicious)
+        dry_run(rows, targets, args.only_template, args.only_suspicious,
+                args.only_duplicated)
         return
 
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -366,9 +386,8 @@ def main() -> None:
 
     print(f"\nwrote {out_path.name}: ok={ok:,} rejected={rejected:,} failed={failed:,}")
     if STOP.is_set():
-        rerun_flag = "--only-suspicious" if args.only_suspicious else "--only-template"
         print("STOPPED on quota exhaustion — nothing was charged. Continue later with:")
-        print(f"  python regenerate_answers.py {rerun_flag} --resume --out {args.out}")
+        print(resume_hint(args))
     else:
         print("Review a sample, then run: python regenerate_answers.py --apply", args.out)
 

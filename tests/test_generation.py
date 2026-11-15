@@ -358,3 +358,56 @@ class TestSuspiciousIsQuestionAware:
         ]
         picked = ra.pick_targets(rows, only_suspicious=True)
         assert [r["subject"] for r in picked] == ["ML"]
+
+
+class TestOnlyDuplicatedTargets:
+    """Shared answer text needs its own mode; default mode drags boilerplate in."""
+
+    @staticmethod
+    def _rows():
+        boiler = ra.TEMPLATES[0]
+        return [
+            {"question": "Q boiler", "answer": boiler, "subject": "S", "difficulty": "Easy"},
+            {"question": "Q shared 1", "answer": "A shared paragraph of prose.", "subject": "S",
+             "difficulty": "Easy"},
+            {"question": "Q shared 2", "answer": "A shared paragraph of prose.", "subject": "S",
+             "difficulty": "Hard"},
+            {"question": "Q unique", "answer": "Unique specific prose that stands alone.",
+             "subject": "S", "difficulty": "Medium"},
+        ]
+
+    def test_selects_only_shared_text(self):
+        picked = {r["question"] for r in ra.pick_targets(self._rows(), only_duplicated=True)}
+        assert picked == {"Q shared 1", "Q shared 2"}
+
+    def test_boilerplate_only_rows_are_excluded(self):
+        picked = {r["question"] for r in ra.pick_targets(self._rows(), only_duplicated=True)}
+        assert "Q boiler" not in picked
+
+    def test_default_mode_still_includes_both(self):
+        picked = {r["question"] for r in ra.pick_targets(self._rows())}
+        assert {"Q boiler", "Q shared 1"} <= picked
+
+
+class TestResumeHint:
+    """The continue command must repeat the mode, or a later run targets the wrong rows."""
+
+    @staticmethod
+    def _args(**kw):
+        import types
+        base = dict(only_suspicious=False, only_duplicated=False, only_template=False,
+                    out="answers_x.csv")
+        base.update(kw)
+        return types.SimpleNamespace(**base)
+
+    def test_duplicated_mode_is_echoed(self):
+        hint = ra.resume_hint(self._args(only_duplicated=True))
+        assert "--only-duplicated" in hint and "--resume" in hint
+        assert "--only-template" not in hint
+
+    def test_suspicious_mode_is_echoed(self):
+        assert "--only-suspicious" in ra.resume_hint(self._args(only_suspicious=True))
+
+    def test_default_mode_has_no_mode_flag(self):
+        hint = ra.resume_hint(self._args())
+        assert "--only-" not in hint

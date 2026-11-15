@@ -68,7 +68,7 @@ enforces the mechanical ones:
 | Script | Purpose | Key flags |
 |---|---|---|
 | `search_app.py` | validate, embed, search | `--validate`, `--rebuild`, `-q`, `-s`, `-d`, `-k`, `--interactive` |
-| `regenerate_answers.py` | rewrite weak answers | `--only-template`, `--only-suspicious`, `--resume`, `--max-requests`, `--workers`, `--dry-run`, `--apply` |
+| `regenerate_answers.py` | rewrite weak answers | `--only-template`, `--only-suspicious`, `--only-duplicated`, `--resume`, `--max-requests`, `--workers`, `--dry-run`, `--apply` |
 | `generate_questions.py` | fill coverage gaps | `--plan`, `--auto`, `--budget`, `--subject`, `--difficulty`, `--count`, `--apply` |
 | `clean_answers.py` | mechanical answer fixes, no model | dry run by default, `--apply`, `--show N` |
 | `audit_dataset.py` | read-only quality audit, no model | `--question/--answer/--subject/--difficulty`, `--json`; exits 1 on blockers |
