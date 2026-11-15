@@ -118,3 +118,28 @@ def test_metric_quoted_from_the_question_is_not_a_blocker(tmp_path):
     ])
     out = run(str(csv_path))
     assert out.returncode == 0, out.stdout
+
+
+def test_personal_score_is_a_warning_not_a_blocker(tmp_path):
+    """A fabricated TOEFL score is a warning: it lowers trust but is not a schema failure."""
+    csv_path = tmp_path / "score.csv"
+    write_csv(csv_path, [
+        ["p", "Tell me about your English proficiency.",
+         "I scored 860 on the TOEFL two years ago, so I read documentation comfortably.",
+         "Behavioral & Career", "Medium"],
+    ])
+    out = run(str(csv_path))
+    assert out.returncode == 0, out.stdout
+    assert "numeric personal claims: 1" in out.stdout
+    assert "VERDICT: PASS" in out.stdout
+
+
+def test_personal_number_supplied_by_the_question_is_not_counted(tmp_path):
+    csv_path = tmp_path / "score2.csv"
+    write_csv(csv_path, [
+        ["p", "You scored 860 on the TOEFL. How do you keep your English sharp?",
+         "My 860 on the TOEFL came from reading documentation daily, which I still do.",
+         "Behavioral & Career", "Easy"],
+    ])
+    out = run(str(csv_path))
+    assert "numeric personal claims: 0" in out.stdout

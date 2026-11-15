@@ -34,6 +34,15 @@ CHATTER = re.compile(
 )
 FILLER = re.compile(r"^\s*(certainly|sure|of course)\s*[.,!]\s*", re.IGNORECASE)
 MARKDOWN = re.compile(r"(\*\*[^*\n]+\*\*|```|^#{1,4} |^\s*[-*] )", re.MULTILINE)
+# Numbers that read as a personal credential or tenure rather than a mechanism: "I scored
+# 860 on the TOEFL", "six years" written as a digit. A warning, never a blocker, because
+# some questions legitimately supply the number.
+PERSONAL = re.compile(
+    r"\b(?:scored|score of)\s+\d{2,4}\b"
+    r"|\b\d{2,4}\s+on\s+the\s+(?:TOEFL|GRE|SAT|IELTS|ACT)\b"
+    r"|\b\d{1,2}\s+years?\s+of\s+(?:experience|professional)\b",
+    re.IGNORECASE,
+)
 TYPO = "\u2018\u2019\u201c\u201d\u2011\u2013\u2014\u2032\u00a0\u202f"
 THIN_CHARS = 100
 
@@ -93,6 +102,8 @@ def audit(path: str, names: argparse.Namespace) -> dict:
     companies = [a for a, q in pairs if any(norm(m.group(0)) not in norm(q)
                                             for m in COMPANIES.finditer(a))]
     invented = [a for a, _q in pairs]
+    personal = [a for a, q in zip(answers, questions)
+                if any(norm(m.group(0)) not in norm(q) for m in PERSONAL.finditer(a))]
     chatter = [a for a in answers if CHATTER.search(a)]
     filler = [a for a in answers if FILLER.match(a)]
     markdown = [a for a in answers if MARKDOWN.search(a)]
@@ -108,6 +119,7 @@ def audit(path: str, names: argparse.Namespace) -> dict:
         "duplicate_questions": {"groups": len(dup_q), "extra_rows": sum(v - 1 for v in dup_q.values())},
         "duplicate_answers": {"groups": len(dup_a), "extra_rows": sum(v - 1 for v in dup_a.values())},
         "invented_specifics": {"total": len(invented), "metrics": len(metrics), "company_names": len(companies)},
+        "personal_claims": len(personal),
         "chatter": len(chatter),
         "filler_openers": len(filler),
         "markdown": len(markdown),
@@ -168,6 +180,8 @@ def show(report: dict, examples: list[str]) -> None:
     print("warnings")
     print(f"  shared answer texts : {da['groups']:,} groups / {da['extra_rows']:,} extra rows "
           f"<- different questions with the same answer")
+    print(f"  numeric personal claims: {report['personal_claims']:,} "
+          f"(scores, years of experience - warning only)")
     print(f"  assistant chatter   : {report['chatter']:,}")
     print(f"  filler openers      : {report['filler_openers']:,}")
     print(f"  markdown            : {report['markdown']:,}")
