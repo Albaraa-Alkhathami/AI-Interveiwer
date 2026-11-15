@@ -6,6 +6,10 @@ remaining daily token budget is spent in this order and generation only gets the
 Before spending anything: `python audit_dataset.py combined_dataset.csv` gives the current
 defect counts in one pass (it exits non-zero while invented specifics remain).
 
+**Revised order, 15 Nov 2026:** take **§3 shared answers before the remaining §2 boilerplate**.
+A shared answer misleads the reader by answering the wrong question; boilerplate merely bores.
+The section numbers are kept so older notes still refer to the same work.
+
 ## Where the dataset stands (measured 15 Nov 2026)
 
 | Metric | Value |
