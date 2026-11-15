@@ -96,3 +96,25 @@ def test_missing_required_columns_exits_with_message(tmp_path):
     out = run(str(csv_path))
     assert out.returncode != 0
     assert "need question and answer columns" in (out.stdout + out.stderr)
+
+
+def test_company_named_in_the_question_is_not_a_blocker(tmp_path):
+    """Context supplied by the question is not an invented company name."""
+    csv_path = tmp_path / "qa.csv"
+    write_csv(csv_path, [
+        ["p", "How is Magento connected with Google Analytics?",
+         "Magento integrates with Google Analytics to report on traffic.", "Magento", "Easy"],
+    ])
+    out = run(str(csv_path))
+    assert out.returncode == 0, out.stdout
+    assert "invented specifics  : 0" in out.stdout
+
+
+def test_metric_quoted_from_the_question_is_not_a_blocker(tmp_path):
+    csv_path = tmp_path / "qm.csv"
+    write_csv(csv_path, [
+        ["p", "You must cut response time by 30%. How?",
+         "I would start by profiling to find what consumes the 30%, then cache.", "ML", "Hard"],
+    ])
+    out = run(str(csv_path))
+    assert out.returncode == 0, out.stdout

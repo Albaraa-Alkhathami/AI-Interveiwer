@@ -78,9 +78,21 @@ def audit(path: str, names: argparse.Namespace) -> dict:
     a_counts = Counter(norm(a) for a in answers)
     dup_a = {k: v for k, v in a_counts.items() if v > 1}
 
-    metrics = [a for a in answers if METRIC.search(a)]
-    companies = [a for a in answers if COMPANIES.search(a)]
-    invented = [a for a in answers if METRIC.search(a) or COMPANIES.search(a)]
+    # A name or figure the question itself supplies is context, not invention: "How is
+    # Magento connected with Google Analytics?" is allowed to answer "Google Analytics".
+    def invented_in(answer: str, question: str) -> bool:
+        asked = norm(question)
+        for match in list(METRIC.finditer(answer)) + list(COMPANIES.finditer(answer)):
+            if norm(match.group(0)) not in asked:
+                return True
+        return False
+
+    pairs = [(a, q) for a, q in zip(answers, questions) if invented_in(a, q)]
+    metrics = [a for a, q in pairs if any(norm(m.group(0)) not in norm(q)
+                                          for m in METRIC.finditer(a))]
+    companies = [a for a, q in pairs if any(norm(m.group(0)) not in norm(q)
+                                            for m in COMPANIES.finditer(a))]
+    invented = [a for a, _q in pairs]
     chatter = [a for a in answers if CHATTER.search(a)]
     filler = [a for a in answers if FILLER.match(a)]
     markdown = [a for a in answers if MARKDOWN.search(a)]
@@ -199,12 +211,17 @@ def main() -> int:
         return 1 if report["blockers"] else 0
 
     rows, _ = load(args.csv)
-    acol = pick(list(rows[0].keys()) if rows else [], "answer", args.answer)
+    cols = list(rows[0].keys()) if rows else []
+    acol = pick(cols, "answer", args.answer)
+    qcol = pick(cols, "question", args.question)
     examples = []
     seen = 0
     for r in rows:
         a = r.get(acol) if acol else ""
-        m = METRIC.search(a or "") or COMPANIES.search(a or "")
+        q = (r.get(qcol) or "") if qcol else ""
+        hits = [m for m in list(METRIC.finditer(a or "")) + list(COMPANIES.finditer(a or ""))
+                if norm(m.group(0)) not in norm(q)]
+        m = hits[0] if hits else None
         if m and seen < 3:
             start = max(0, m.start() - 45)
             examples.append(f"[invented] ...{(a or '')[start:m.end() + 15]!r}")

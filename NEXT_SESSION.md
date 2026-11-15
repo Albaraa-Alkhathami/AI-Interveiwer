@@ -14,37 +14,42 @@ defect counts in one pass (it exits non-zero while invented specifics remain).
 | Subjects | 46 |
 | Coverage | 138/138 cells (Easy/Medium/Hard) |
 | Subjects under 20 questions | 2 (General Computer Science 12, Version Control 17) |
-| Invented specifics (metrics / companies) | 85 (54 / 31) |
-| Boilerplate answers | 1,059 |
-| Duplicated answer texts | 264 distinct texts across 1,360 rows; 1,150 are rewrite targets |
-| Default-mode targets | 2,209 (9.2%) |
-| Answers under 100 characters | 90 |
+| Invented specifics (metrics / companies) | **0** (was 85) |
+| Boilerplate answers | 1,058 |
+| Duplicated answer texts | 262 distinct texts across 1,357 rows; 1,145 are rewrite targets |
+| Default-mode targets | 2,203 (9.2%) |
+| Answers under 100 characters | 89 |
 | Assistant chatter / filler openers | 32 / 12 |
 | Markdown leakage / typographic punctuation | 3 / 0 |
 
-## 1. Fabricated specifics — 85 rows remaining
+## 1. Fabricated specifics — **done 15 Nov 2026**, 0 remaining
 
-Highest-risk content: an invented figure ("we compressed the model size by 4.3x") reads as a
-verified result. `--only-suspicious` appends `NO_METRICS` to the prompt and **rejects** any
-rewrite that still contains a figure or company name, so expect a reject rate: those rows need
-a second pass, which is normal, not a failure.
+85 rows were regenerated in one run: **77 accepted, 6 rejected by the guard, 2 failed**. After
+applying and cleaning, the re-audit reports 0. The 8 unrewritten rows turned out to be false
+positives — the question itself supplies the term ("Magento connected with Google Analytics",
+"reduce response time by at least 30%") — so `is_suspicious()` and `audit_dataset.py` now ignore
+any figure or company name the question already contains. Regenerating those would have looped
+forever, since the prompt asked for an answer the guard then banned.
+
+What this cost: ~77 answers of the daily budget (roughly 60k tokens). If the pool is ever
+reopened, the same command applies:
 
 ```bash
-export OPENAI_API_KEY=... OPENAI_BASE_URL=https://api.groq.com/openai/v1 OPENAI_MODEL=openai/gpt-oss-20b
+export OPENAI_API_KEY=$(cat .key) OPENAI_BASE_URL=https://api.groq.com/openai/v1 OPENAI_MODEL=openai/gpt-oss-20b
 python regenerate_answers.py --only-suspicious --resume --workers 2 --max-requests 250 --out answers_suspicious2.csv
 python regenerate_answers.py --apply answers_suspicious2.csv
-python regenerate_answers.py --only-suspicious --dry-run    # target count must fall
+python clean_answers.py && python clean_answers.py --apply   # new text reintroduces typography
 ```
 
-Start there rather than at (2): these are the only rows that can mislead a reader into thinking
-a fabricated result is real, and they are 85 rows, not 2,000.
+Watch out: the model emits non-breaking hyphens and curly apostrophes even when the prose is
+otherwise clean, so **the cleaner must run after every apply** or the typography count regresses.
 
-## 2. Chatter, short answers, remaining boilerplate
+## 2. Chatter, short answers, remaining boilerplate — **next up**
 
 | Target | Rows | Why it matters |
 |---|---:|---|
-| Boilerplate | 1,059 | "A good answer should address the requirements…" — visible filler |
-| Under 100 characters | 90 | Placeholders, not explanations |
+| Boilerplate | 1,058 | "A good answer should address the requirements…" — visible filler |
+| Under 100 characters | 89 | Placeholders, not explanations |
 | Mid-text chatter | 32 | "Feel free to ask…" surviving the mechanical pass |
 | Leading filler | 12 | "Certainly." openers |
 
@@ -55,7 +60,7 @@ boilerplate plus duplicated answers:
 python regenerate_answers.py --only-template --resume --workers 2 --max-requests 250 --out answers_template.csv
 ```
 
-## 3. Shared answers — 1,360 rows (1,150 rewrite targets)
+## 3. Shared answers — 1,357 rows (1,145 rewrite targets)
 
 Different questions carrying identical answer text. Question-level dedupe cannot see this: each
 question is unique, so the defect is invisible to a uniqueness check while the answer next to it

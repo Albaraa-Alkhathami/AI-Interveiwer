@@ -76,9 +76,19 @@ COMPANY_RE = re.compile(
 )
 
 
-def is_suspicious(answer: str) -> bool:
-    """True when the answer states a metric or names a company it cannot substantiate."""
-    return bool(METRIC_RE.search(answer) or COMPANY_RE.search(answer))
+def is_suspicious(answer: str, question: str = "") -> bool:
+    """True when the answer states a metric or company the question never introduced.
+
+    A name or figure the question itself supplies is not an invention: "How is Magento
+    connected with Google Analytics?" must be allowed to say Google Analytics, and
+    "reduce response time by at least 30%" must be allowed to repeat 30%. Rejecting those
+    loops forever, because the prompt then asks for an answer containing what the guard bans.
+    """
+    asked = norm(question)
+    for match in list(METRIC_RE.finditer(answer)) + list(COMPANY_RE.finditer(answer)):
+        if norm(match.group(0)) not in asked:
+            return True
+    return False
 
 
 def norm(text: str) -> str:
@@ -88,7 +98,7 @@ def norm(text: str) -> str:
 def pick_targets(rows: list[dict], only_template: bool = False,
                  only_suspicious: bool = False) -> list[dict]:
     if only_suspicious:
-        return [r for r in rows if is_suspicious(r["answer"])]
+        return [r for r in rows if is_suspicious(r["answer"], r["question"])]
     counts = Counter(norm(r["answer"]) for r in rows)
     picked = []
     for r in rows:
@@ -302,7 +312,10 @@ def main() -> None:
     if args.max_requests:
         targets = targets[: args.max_requests]
     if not targets:
-        print("nothing left to do")
+        if args.only_suspicious:
+            print("nothing to regenerate - no invented metrics or company names left")
+        else:
+            print("nothing to regenerate - no templated or duplicated answers found")
         return
     print(f"regenerating {len(targets):,} answers with {model} via {base_url} ({args.workers} workers)")
 
@@ -326,7 +339,7 @@ def main() -> None:
                 try:
                     new = fut.result()
                     reason = validate(new, seen)
-                    if not reason and args.only_suspicious and is_suspicious(new):
+                    if not reason and args.only_suspicious and is_suspicious(new, r["question"]):
                         # the prompt asks for no figures; enforce it rather than trust it
                         reason = "still contains a metric or company name"
                     if reason:

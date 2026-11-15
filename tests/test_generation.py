@@ -322,3 +322,39 @@ def test_generate_call_llm_daily_cap_sets_stop(urlopen):
     with pytest.raises(RuntimeError, match="daily quota"):
         gq.call_llm("prompt", "k", "https://api.example/v1", "m")
     assert gq.STOP.is_set()
+
+
+class TestSuspiciousIsQuestionAware:
+    """A name or figure the question supplies is context, not invention."""
+
+    def test_company_named_in_question_is_not_suspicious(self):
+        q = "How is Magento connected with Google Analytics?"
+        a = "Magento integrates with Google Analytics to report on behaviour."
+        assert ra.is_suspicious(a, q) is False
+
+    def test_company_invented_by_answer_is_suspicious(self):
+        q = "How do you cache a slow endpoint?"
+        a = "At Netflix we cached the response for a minute."
+        assert ra.is_suspicious(a, q) is True
+
+    def test_metric_quoted_from_question_is_not_suspicious(self):
+        q = "You must reduce response time by at least 30%. How?"
+        a = "I would target the 30% by profiling first, then caching."
+        assert ra.is_suspicious(a, q) is False
+
+    def test_metric_invented_by_answer_is_suspicious(self):
+        q = "How would you speed up the pipeline?"
+        a = "I compressed the model size by 60%."
+        assert ra.is_suspicious(a, q) is True
+
+    def test_pick_targets_passes_the_question_through(self):
+        rows = [
+            {"question": "How is Magento connected with Google Analytics?",
+             "answer": "Magento integrates with Google Analytics.", "subject": "Magento",
+             "difficulty": "Easy"},
+            {"question": "How would you speed up the pipeline?",
+             "answer": "I compressed the model size by 60%.", "subject": "ML",
+             "difficulty": "Hard"},
+        ]
+        picked = ra.pick_targets(rows, only_suspicious=True)
+        assert [r["subject"] for r in picked] == ["ML"]
