@@ -25,3 +25,9 @@ __pycache__/
 
 # temporary store used during history rewrites
 .qkeep/
+# API credentials (never commit)
+
+.key
+.env
+
+
