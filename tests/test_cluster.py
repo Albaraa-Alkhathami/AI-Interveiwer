@@ -42,43 +42,38 @@ def test_transitive_chain_merges_into_one_group():
     assert len(groups) == 1 and sorted(groups[0]) == [0, 1, 2]
 
 
-def test_a_repeated_opening_is_stripped_before_comparison():
-    stock = "Before choosing a direction I would make the trade-off explicit."
+def test_recurring_sentences_are_removed_wherever_they_sit():
+    stock = "The first approach generally emphasizes one set of trade-offs."
     answers = [
-        f"{stock} I would then compare the two options on cost and on reversibility.",
-        f"{stock} I would then ask which of the constraints is real and which is habit.",
-        "A mutex guards shared state; a semaphore counts permits.",
+        f"{stock} I would profile the render loop and cut draw calls per frame.",
+        f"{stock} I would shard the search index by tenant and cache the hottest shard.",
+        "A mutex guards shared state; a semaphore counts permits under load.",
     ]
-    bodies, info = cd.strip_stock_openings(answers, min_count=2)
-    assert info["stripped"] == 2
-    assert info["stock_openings"] == 1
-    assert all(stock not in b for b in bodies), "the template opening survived"
-    assert bodies[0] != bodies[1], "bodies must still be compared, not collapsed"
-    assert bodies[2] == answers[2]
+    bodies, info = cd.strip_template_sentences(answers, min_count=2)
+    assert info["stock_sentences"] == 1
+    assert all(stock not in b for b in bodies)
+    assert bodies[0] != bodies[1], "the specific halves must survive and stay distinct"
+    assert info["rows_with_specific_text"] == 3
 
 
-def test_a_unique_opening_is_kept():
+def test_a_fully_templated_answer_is_not_compared():
+    stock = "The first approach generally emphasizes one set of trade-offs."
     answers = [
-        "I once rebuilt a queue consumer under load.",
-        "A mutex guards shared state; a semaphore counts permits.",
+        f"{stock} The choice depends on requirements such as performance and complexity.",
+        f"{stock} The choice depends on requirements such as performance and complexity.",
+        f"{stock} I would profile the render loop and cut draw calls per frame.",
     ]
-    bodies, info = cd.strip_stock_openings(answers, min_count=2)
-    assert info["stripped"] == 0
+    bodies, info = cd.strip_template_sentences(answers, min_count=2)
+    assert info["rows_fully_templated"] == 2, info
+    assert info["keep"] == [2], "only the answer with specific text is comparable"
+    assert len(bodies) == len(answers), "index alignment must be preserved"
+
+
+def test_a_unique_answer_is_untouched():
+    answers = [
+        "I once rebuilt a queue consumer under load and cut the retry storm.",
+        "A mutex guards shared state; a semaphore counts permits under load.",
+    ]
+    bodies, info = cd.strip_template_sentences(answers, min_count=2)
     assert bodies == answers
-
-
-def test_opening_stats_counts_rows_sharing_a_template():
-    stock = "Before choosing a direction I would make the trade-off explicit."
-    answers = [f"{stock} body one here.", f"{stock} body two here.", "A unique opening line."]
-    stats = cd.opening_stats(answers, min_count=2)
-    assert stats["rows_with_stock_opening"] == 2
-    assert stats["stock_openings"] == 1
-    assert stats["largest"][0] == 2
-
-
-def test_a_short_body_is_not_stripped():
-    stock = "Before choosing a direction I would make the trade-off explicit."
-    answers = [f"{stock} ok.", f"{stock} ok.", f"{stock} ok."]
-    bodies, info = cd.strip_stock_openings(answers, min_count=2)
-    assert info["stripped"] == 0, "stripping a short answer would leave nothing to compare"
-    assert bodies == answers
+    assert info["rows_fully_templated"] == 0

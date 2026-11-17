@@ -61,22 +61,40 @@ def opening_stats(texts: list[str], min_count: int) -> dict:
     }
 
 
-def strip_stock_openings(texts: list[str], min_count: int) -> tuple[list[str], dict]:
-    """Remove a recurring leading sentence so the comparison sees the body, not the template."""
-    openings = [split_opening(t)[0] for t in texts]
-    counts = Counter(o.casefold() for o in openings if o)
-    stock = {o for o, n in counts.items() if n >= min_count}
+SENTENCE = re.compile(r"(?<=[.!?])\s+")
 
-    bodies, stripped = [], 0
-    for text, opening in zip(texts, openings):
-        if opening and opening.casefold() in stock:
-            body = split_opening(text)[1]
-            if len(body) >= MIN_BODY:
-                bodies.append(body)
-                stripped += 1
-                continue
-        bodies.append(text)
-    return bodies, {"stripped": stripped, "stock_openings": len(stock)}
+
+def strip_template_sentences(texts: list[str], min_count: int) -> tuple[list[str], dict]:
+    """Drop every sentence that recurs across the dataset, wherever it sits.
+
+    Stripping only the leading sentence was not enough: the template continues into the
+    body ("(3) add buffering and explicit backpressure..." is shared by 1,337 answers), so a
+    front-to-back strip merely walks into the next stock sentence. Removing all recurring
+    sentences leaves the part that is actually specific to the question.
+    """
+    per_text = [SENTENCE.split(" ".join(t.split())) for t in texts]
+    counts = Counter(s.casefold() for sents in per_text for s in sents if len(s) > 20)
+    stock = {s for s, n in counts.items() if n >= min_count}
+
+    bodies, keep, removed = [], [], 0
+    for i, (text, sents) in enumerate(zip(texts, per_text)):
+        kept = [s for s in sents if not (len(s) > 20 and s.casefold() in stock)]
+        body = " ".join(kept).strip()
+        removed += max(0, len(text) - len(body))
+        if len(body) >= MIN_BODY:
+            bodies.append(body)
+            keep.append(i)
+        else:
+            # nothing survives the strip: the whole answer is template, so it has no
+            # specific text to compare and must not be counted as a paraphrase of another
+            bodies.append(text)
+    return bodies, {
+        "stock_sentences": len(stock),
+        "rows_with_specific_text": len(keep),
+        "rows_fully_templated": len(texts) - len(keep),
+        "chars_removed": removed,
+        "keep": keep,
+    }
 
 
 def body_vectors(bodies: list[str], prefix: int, min_count: int) -> tuple[np.ndarray, str]:
@@ -198,12 +216,15 @@ def main() -> int:
         results += summarise("questions", qtexts, qv, thresholds)
 
     if args.only in (None, "answers"):
-        bodies, strip_info = strip_stock_openings(answers, args.opening_min_count)
-        print(f"answers    template openings stripped from {strip_info['stripped']:,} row(s) "
-              f"({strip_info['stock_openings']:,} stock sentences)")
-        av, source = body_vectors(bodies, args.answer_prefix, args.opening_min_count)
-        print(f"answers: body vectors from {source} (prefix {args.answer_prefix} chars)")
-        results += summarise("answers", bodies, av, thresholds)
+        bodies, strip_info = strip_template_sentences(answers, args.opening_min_count)
+        print(f"answers    template sentences={strip_info['stock_sentences']:,} "
+              f"rows_with_specific_text={strip_info['rows_with_specific_text']:,} "
+              f"rows_fully_templated={strip_info['rows_fully_templated']:,}")
+        specific = [bodies[i] for i in strip_info["keep"]]
+        av, source = body_vectors(specific, args.answer_prefix, args.opening_min_count)
+        print(f"answers: body vectors from {source} for {len(specific):,} specific rows "
+              f"(prefix {args.answer_prefix} chars)")
+        results += summarise("answers", specific, av, thresholds)
 
     if args.json:
         print(json.dumps(results, indent=2))
