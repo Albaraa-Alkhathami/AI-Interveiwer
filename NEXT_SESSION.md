@@ -91,6 +91,11 @@ roughly **270 answer rewrites per day**. Shared answers 1,250 → 1,086 extra ro
 boilerplate 870 → 799, thin answers 89 → 74. Chat-bubble chatter and filler also fell as a side
 effect (32 → 27, 12 → 10).
 
+**17 Nov, after the cap:** a 4-token probe returned 200 with 7,924 tokens "available", so a run
+was started; its first real answer failed with `per day` and the run stopped after 4 requests
+(1 ok). The cap had not reset — the probe had been served on residual budget. Resume with
+`--out answers_duplicated2.csv --resume`; do not truncate that file.
+
 **16 Nov, third attempt (valid key on disk):** 15 accepted, 1 rejected, then `429 ... tokens per
    day` — the cap itself, confirmed by the now-untruncated error text. The key was valid; the
    budget was not. Applied and audited: shared answers 1,265 → 1,250.

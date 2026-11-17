@@ -58,6 +58,11 @@ enforces the mechanical ones:
   it looks like "0 candidates", not like an error.
 - **An empty completion is a failure**, never an empty answer. Both scripts retry it.
 - Always pass `--max-requests`/`--budget` so a run cannot outlive its allowance.
+- **A cheap probe proves authentication, not budget.** A 4-token request can be served on the
+  last few hundred tokens of an exhausted day and still return 200; the first real answer then
+  fails with `per day`. Do not conclude "the cap has reset" from a probe — this has cost two
+  runs. Only a completed answer, or the `x-ratelimit-remaining-tokens` header sitting near the
+  full 8k, is evidence of headroom.
 - Generators write a reviewable CSV; `--apply` merges it. Use `--resume` to continue a stopped
   run — it skips rows already marked `ok`.
 - `generate_questions.py` **appends** to its output file, so merging two runs can repeat rows.
