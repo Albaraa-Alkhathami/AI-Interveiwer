@@ -523,3 +523,109 @@ def test_apply_refuses_an_invented_figure(tmp_path, monkeypatch, capsys):
                                    newline="")))
     assert rows[0]["answer"] == "original answer text.", "invented figure was applied"
     assert "invented specifics" in text
+
+
+# --------------------------------------------------------------------------- #
+# Corrective retry: a guard rejection costs one extra call, not one lost day
+# --------------------------------------------------------------------------- #
+BAD_METRIC = GOOD_ANSWER + " In production this cut tail latency by 40 % on the same hardware."
+
+
+def _dup_dataset(tmp_path):
+    """Two rows sharing one answer, so --only-duplicated has a target."""
+    import csv as _csv
+    path = tmp_path / "combined_dataset.csv"
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        w = _csv.writer(fh)
+        w.writerow(["prompt", "question", "answer", "subject", "difficulty", "data_flag"])
+        w.writerow(["p", "How do you isolate a failing write?", "shared old answer", "Java", "Easy", ""])
+        w.writerow(["p", "How do you bound queue lag?", "shared old answer", "Java", "Hard", ""])
+    return path
+
+
+def _run_regenerate(tmp_path, monkeypatch, capsys, extra_args=()):
+    monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "SRC", tmp_path / "combined_dataset.csv")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    argv = ["regenerate_answers.py", "--only-duplicated", "--workers", "1",
+            "--max-requests", "5", "--out", "out.csv", *extra_args]
+    monkeypatch.setattr(sys, "argv", argv)
+    ra.main()
+    import csv as _csv
+    with open(tmp_path / "out.csv", encoding="utf-8", newline="") as fh:
+        return list(_csv.DictReader(fh)), capsys.readouterr().out
+
+
+def test_rejection_reason_is_fed_back_into_one_retry(tmp_path, monkeypatch, capsys):
+    """First draft invents 40 %; the retry is told exactly that, and it succeeds."""
+    _dup_dataset(tmp_path)
+    bodies: list[dict] = []
+
+    def fake(req, timeout=None):
+        bodies.append(json.loads(req.data))
+        return completion(BAD_METRIC) if len(bodies) == 1 else completion(GOOD_ANSWER)
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    # one target: the second row would get its own retry and muddy the call count
+    rows, out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "1"))
+
+    assert len(bodies) == 2, "expected exactly one corrective retry"
+    retry_prompt = bodies[1]["messages"][1]["content"]
+    assert "rejected by an automated check" in retry_prompt
+    assert "40 %" in retry_prompt, "the offending figure must be quoted back"
+    assert "NO figures at all" in retry_prompt
+    assert rows[0]["status"] == "ok"
+    assert rows[0]["new_answer"] == GOOD_ANSWER
+    assert "1 recovered" in out
+
+
+def test_second_failure_is_recorded_and_not_retried_again(tmp_path, monkeypatch, capsys):
+    """One retry only: a model that keeps inventing figures must not eat the budget."""
+    _dup_dataset(tmp_path)
+    calls: list[int] = []
+
+    def fake(req, timeout=None):
+        calls.append(1)
+        return completion(BAD_METRIC)
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    rows, _out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "1"))
+
+    assert len(calls) == 2, f"expected 2 calls for 1 target, got {len(calls)}"
+    assert rows[0]["status"].startswith("rejected:")
+    assert "; retry:" in rows[0]["status"]
+
+
+def test_no_retry_flag_keeps_the_old_single_call(tmp_path, monkeypatch, capsys):
+    _dup_dataset(tmp_path)
+    calls: list[int] = []
+
+    def fake(req, timeout=None):
+        calls.append(1)
+        return completion(BAD_METRIC)
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    rows, _out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "1", "--no-retry"))
+
+    assert len(calls) == 1
+    assert rows[0]["status"].startswith("rejected:")
+
+
+def test_retry_is_not_spent_once_the_request_budget_is_gone(tmp_path, monkeypatch, capsys):
+    """The retry must respect --max-requests: no call beyond the allowance."""
+    _dup_dataset(tmp_path)
+    calls: list[int] = []
+
+    def fake(req, timeout=None):
+        calls.append(1)
+        return completion(BAD_METRIC)
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "SRC", tmp_path / "combined_dataset.csv")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(sys, "argv", ["regenerate_answers.py", "--only-duplicated",
+                                      "--workers", "1", "--max-requests", "1",
+                                      "--out", "out.csv"])
+    ra.main()
+    assert len(calls) == 1, "the budget of one call must not fund a retry"

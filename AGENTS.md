@@ -57,7 +57,14 @@ enforces the mechanical ones:
   reasoning and return `content: ""` with `finish_reason: "length"`. That failure is silent:
   it looks like "0 candidates", not like an error.
 - **An empty completion is a failure**, never an empty answer. Both scripts retry it.
-- Always pass `--max-requests`/`--budget` so a run cannot outlive its allowance.
+- Always pass `--max-requests`/`--budget` so a run cannot outlive its allowance; it now counts
+  corrective retries too, so the allowance means API calls, not targets.
+- **A corrective retry must beat the alternative to be worth its call.** With a fixed call
+  budget, retrying a rejection (rate ~15%) spends a call that would otherwise have gone to a
+  fresh target, which succeeds 85% of the time. The retry therefore pays only if it recovers
+  more than ~85% of rejections; below that, `--no-retry` yields more accepted answers per day.
+  Every run prints `corrective retries: N spent, M recovered`, so the two modes can be compared
+  on the same dataset instead of argued about.
 - **A cheap probe proves authentication, not budget.** A 4-token request can be served on the
   last few hundred tokens of an exhausted day and still return 200; the first real answer then
   fails with `per day`. Do not conclude "the cap has reset" from a probe — this has cost two
@@ -73,7 +80,7 @@ enforces the mechanical ones:
 | Script | Purpose | Key flags |
 |---|---|---|
 | `search_app.py` | validate, embed, search | `--validate`, `--rebuild`, `-q`, `-s`, `-d`, `-k`, `--interactive` |
-| `regenerate_answers.py` | rewrite weak answers | `--only-template`, `--only-suspicious`, `--only-duplicated`, `--resume`, `--max-requests`, `--workers`, `--dry-run`, `--apply` |
+| `regenerate_answers.py` | rewrite weak answers | `--only-template`, `--only-suspicious`, `--only-duplicated`, `--resume`, `--max-requests` (counts retries), `--no-retry`, `--workers`, `--dry-run`, `--apply` |
 | `generate_questions.py` | fill coverage gaps | `--plan`, `--auto`, `--budget`, `--subject`, `--difficulty`, `--count`, `--apply` |
 | `clean_answers.py` | mechanical answer fixes, no model | dry run by default, `--apply`, `--show N` |
 | `audit_dataset.py` | read-only quality audit, no model | `--question/--answer/--subject/--difficulty`, `--json`; exits 1 on blockers |

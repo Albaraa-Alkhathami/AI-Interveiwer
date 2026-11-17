@@ -91,6 +91,11 @@ roughly **270 answer rewrites per day**. Shared answers 1,250 → 1,086 extra ro
 boilerplate 870 → 799, thin answers 89 → 74. Chat-bubble chatter and filler also fell as a side
 effect (32 → 27, 12 → 10).
 
+**17 Nov, corrective retry added:** a guard rejection now gets exactly one retry whose prompt
+quotes the failing rule (and the offending figure). It is off with `--no-retry`. Measure it on
+the next real run: keep it only if `recovered / spent` exceeds ~85%, otherwise the call is
+better spent on a fresh target.
+
 **17 Nov, after the cap:** a 4-token probe returned 200 with 7,924 tokens "available", so a run
 was started; its first real answer failed with `per day` and the run stopped after 4 requests
 (1 ok). The cap had not reset — the probe had been served on residual budget. Resume with

@@ -151,6 +151,38 @@ NO_METRICS = (
 )
 
 
+def correction_for(reason: str, draft: str, question: str) -> str:
+    """Turn a rejection reason into an instruction for one corrective retry.
+
+    Retrying blindly with the same prompt mostly reproduces the same failure; naming the rule
+    that failed is what converts a wasted request into a usable answer.
+    """
+    head = ("Your previous draft was rejected by an automated check. Rewrite it so it passes, "
+            "keeping whatever was already correct.\n")
+    if reason.startswith("contains banned phrase"):
+        phrase = reason.split(":", 1)[-1].strip()
+        return (head + f"It contained {phrase}. Remove that phrasing entirely, and do not address "
+                "the reader or offer further help.")
+    if reason.startswith("still contains a metric or company name"):
+        offenders = [m.group(0) for m in list(METRIC_RE.finditer(draft))
+                     + list(COMPANY_RE.finditer(draft))
+                     if norm(m.group(0)) not in norm(question)]
+        quoted = ", ".join(dict.fromkeys(offenders[:3])) or "a figure"
+        return (head + f"It stated invented specifics ({quoted}). State NO figures at all - no "
+                "percentage, ratio, multiplier, count or measurement, approximate or otherwise - "
+                "and no company or product names the question did not mention. Describe the "
+                "mechanism, the trade-off and how you would verify the result instead.")
+    if reason == "too short":
+        return head + "It was under 300 characters. Write 120-220 words of flowing prose."
+    if reason == "too long":
+        return head + "It was over 2,500 characters. Cut it to 120-220 words."
+    if reason == "unfinished sentence":
+        return head + "It did not end with terminal punctuation. Finish the last sentence."
+    if reason == "duplicate of another generated answer":
+        return head + "It repeated another answer from this batch. Answer this question specifically."
+    return head + f"The check reported: {reason}."
+
+
 def call_llm(question: str, subject: str, difficulty: str,
              api_key: str, base_url: str, model: str,
              retries: int = 8, timeout: int = 60, extra: str = "") -> str:
@@ -267,7 +299,10 @@ def main() -> None:
                     help="regenerate only answers whose text is shared with another row")
     ap.add_argument("--workers", type=int, default=8, help="parallel requests (default 8)")
     ap.add_argument("--out", default="answers_regenerated.csv", help="output CSV")
-    ap.add_argument("--max-requests", type=int, help="hard cap on API calls this run")
+    ap.add_argument("--max-requests", type=int,
+                    help="hard cap on API calls this run, corrective retries included")
+    ap.add_argument("--no-retry", action="store_true",
+                    help="do not spend a second call on a guard rejection")
     ap.add_argument("--resume", action="store_true",
                     help="skip questions already present in --out (continue a stopped run)")
     ap.add_argument("--apply", metavar="FILE", help="merge a reviewed output CSV into the dataset")
@@ -351,8 +386,8 @@ def main() -> None:
 
     if args.limit:
         targets = targets[: args.limit]
-    if args.max_requests:
-        targets = targets[: args.max_requests]
+    # --max-requests bounds API calls, retries included, so the loop counts them rather
+    # than truncating the target list here.
     if not targets:
         if args.only_suspicious:
             print("nothing to regenerate - no invented metrics or company names left")
@@ -363,6 +398,9 @@ def main() -> None:
 
     seen: set[str] = set()
     done = ok = rejected = failed = 0
+    retried = recovered = 0
+    request_budget = args.max_requests or len(targets)
+    requests_used = 0
     mode = "a" if (args.resume and out_path.exists()) else "w"
     with open(out_path, mode, encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=OUT_COLS)
@@ -374,8 +412,10 @@ def main() -> None:
         chunk_size = max(args.workers * 2, 1)
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             queue = list(targets)
-            while queue and not STOP.is_set():
-                chunk, queue = queue[:chunk_size], queue[chunk_size:]
+            while queue and not STOP.is_set() and requests_used < request_budget:
+                take = min(chunk_size, request_budget - requests_used)
+                chunk, queue = queue[:take], queue[take:]
+                requests_used += len(chunk)
                 futures = {
                     pool.submit(call_llm, r["question"], r["subject"], r["difficulty"],
                                 api_key, base_url, model,
@@ -392,6 +432,34 @@ def main() -> None:
                             # applies in every mode: a rewrite can invent a figure even when the
                             # old answer was merely boilerplate or duplicated
                             reason = "still contains a metric or company name"
+                        if reason and not args.no_retry and not STOP.is_set() \
+                                and requests_used < request_budget:
+                            # One corrective retry, paid for out of the same budget: the guard
+                            # rejection already cost a request, so spending one more on a
+                            # targeted fix is cheaper than leaving the row for tomorrow.
+                            retried += 1
+                            requests_used += 1
+                            try:
+                                second = call_llm(r["question"], r["subject"], r["difficulty"],
+                                                  api_key, base_url, model,
+                                                  extra=correction_for(reason, new, r["question"]))
+                            except Exception as e:  # noqa: BLE001 - quota or network
+                                failed += 1
+                                writer.writerow({**{k: r[k] for k in ("question", "subject",
+                                                                     "difficulty")},
+                                                 "old_answer": r["answer"], "new_answer": "",
+                                                 "status": f"error: {e}"})
+                                if STOP.is_set():
+                                    break
+                                continue
+                            again = validate(second, seen)
+                            if not again and is_suspicious(second, r["question"]):
+                                again = "still contains a metric or company name"
+                            if again:
+                                reason = f"{reason}; retry: {again}"
+                            else:
+                                new, reason = second, None
+                                recovered += 1
                         if reason:
                             rejected += 1
                             writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
@@ -410,13 +478,18 @@ def main() -> None:
                                          "status": f"error: {e}"})
                     if done % 100 == 0 or done == len(targets):
                         fh.flush()
-                        print(f"  {done:,}/{len(targets):,}  ok={ok:,} rejected={rejected:,} failed={failed:,}")
+                        print(f"  {done:,}/{len(targets):,}  ok={ok:,} rejected={rejected:,} "
+                              f"failed={failed:,} retried={retried:,} recovered={recovered:,}")
                 if STOP.is_set():
                     fh.flush()
                     print(f"  quota hit after {done:,} request(s) - {len(queue):,} left unsent")
                     break
 
-    print(f"\nwrote {out_path.name}: ok={ok:,} rejected={rejected:,} failed={failed:,}")
+    print(f"\nwrote {out_path.name}: ok={ok:,} rejected={rejected:,} failed={failed:,}"
+          f" calls={requests_used:,}")
+    if retried:
+        print(f"corrective retries: {retried:,} spent, {recovered:,} recovered "
+              f"({100 * recovered / retried:.0f}% success)")
     if STOP.is_set():
         print("STOPPED on an unrecoverable provider error (quota or credentials) — nothing was charged.")
         print("Continue later with:")
