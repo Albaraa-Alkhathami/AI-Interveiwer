@@ -90,7 +90,7 @@ enforces the mechanical ones:
 | Script | Purpose | Key flags |
 |---|---|---|
 | `search_app.py` | validate, embed, search | `--validate`, `--rebuild`, `-q`, `-s`, `-d`, `-k`, `--interactive` |
-| `regenerate_answers.py` | rewrite weak answers | `--only-template`, `--only-suspicious`, `--only-duplicated`, `--resume`, `--max-requests` (counts retries), `--retry` (opt-in), `--workers`, `--dry-run`, `--apply` |
+| `regenerate_answers.py` | rewrite weak answers | `--only-template`, `--only-suspicious`, `--only-duplicated`, `--only-templated`, `--subject`, `--resume`, `--max-requests` (counts retries), `--retry` (opt-in), `--workers`, `--dry-run`, `--apply` |
 | `generate_questions.py` | fill coverage gaps | `--plan`, `--auto`, `--budget`, `--subject`, `--difficulty`, `--count`, `--apply` |
 | `cluster_duplicates.py` | measure paraphrase/opening duplication, no model | `--only questions\|answers\|openings`, `--thresholds`, `--opening-min-count`, `--answer-prefix`, `--json` |
 | `clean_answers.py` | mechanical answer fixes, no model | dry run by default, `--apply`, `--show N` |

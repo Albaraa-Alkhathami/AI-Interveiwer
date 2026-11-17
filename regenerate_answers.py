@@ -135,6 +135,25 @@ def validate(answer: str, seen: set[str]) -> str | None:
     return None
 
 
+SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def templated_flags(rows: list[dict], min_count: int = 50) -> dict[int, bool]:
+    """Map id(row) -> True when the answer contains a sentence that recurs dataset-wide.
+
+    Roughly 61% of answers are assembled from a few hundred stock sentences; the whole-answer
+    TEMPLATES list only sees 799 of them, so a repair pass needs this, not that list.
+    """
+    texts = [" ".join(r["answer"].split()) for r in rows]
+    sents = [SENTENCE_RE.split(t) for t in texts]
+    counts = Counter(s.casefold() for ss in sents for s in ss if len(s) > 20)
+    stock = {s for s, n in counts.items() if n >= min_count}
+    return {
+        id(r): any(s.casefold() in stock for s in ss if len(s) > 20)
+        for r, ss in zip(rows, sents)
+    }
+
+
 def quarantine_path() -> Path:
     return BASE / "quarantine.json"
 
@@ -292,11 +311,15 @@ def call_llm(question: str, subject: str, difficulty: str,
 
 
 def dry_run(rows: list[dict], targets: list[dict], only_template: bool = False,
-            only_suspicious: bool = False, only_duplicated: bool = False) -> None:
+            only_suspicious: bool = False, only_duplicated: bool = False,
+            only_templated: bool = False, subject: str | None = None) -> None:
     mode = ("invented metrics / company names only" if only_suspicious
             else "duplicated answers only" if only_duplicated
             else "boilerplate answers only" if only_template
+            else "answers containing a recurring (template) sentence" if only_templated
             else "boilerplate + duplicated answers")
+    if subject:
+        mode += f" | subject: {subject}"
     print(f"mode                 : {mode}")
     print(f"dataset rows          : {len(rows):,}")
     print(f"target rows           : {len(targets):,} ({100 * len(targets) / len(rows):.1f}%)")
@@ -312,7 +335,11 @@ def dry_run(rows: list[dict], targets: list[dict], only_template: bool = False,
     cost = in_tok / 1e6 * 0.15 + out_tok / 1e6 * 0.60
     print(f"\nestimated tokens      : ~{in_tok:,} in / ~{out_tok:,} out")
     print(f"estimated cost        : ~${cost:.2f} with gpt-4o-mini (input $0.15/M, output $0.60/M)")
-    print(f"free-tier days needed : ~{out_tok / 200_000:.1f} at Groq's 200k output tokens/day")
+    # Measured on this account: ~845 total tokens per answer (input + reasoning + output),
+    # a day buys ~237 accepted answers. Output-only arithmetic understated this by ~3x.
+    per_answer = 845
+    print(f"free-tier days needed : ~{len(targets) * per_answer / 200_000:.1f} "
+          f"at 237 accepted answers/day (~{per_answer} tokens each)")
     print(f"wall time             : ~{len(targets) / 8 / 60:.0f} min at 8 workers, ~1 req/s each")
 
     print("\n--- sample prompt ---")
@@ -338,6 +365,10 @@ def main() -> None:
                     help="regenerate only the boilerplate answers (smaller, cheaper run)")
     ap.add_argument("--only-suspicious", action="store_true",
                     help="regenerate only answers that invent metrics or name companies")
+    ap.add_argument("--only-templated", action="store_true",
+                    help="rows whose answer contains a sentence that recurs across the dataset")
+    ap.add_argument("--subject", metavar="NAME",
+                    help="restrict targets to this subject (exact, case-insensitive)")
     ap.add_argument("--only-duplicated", action="store_true",
                     help="regenerate only answers whose text is shared with another row")
     ap.add_argument("--workers", type=int, default=8, help="parallel requests (default 8)")
@@ -432,9 +463,22 @@ def main() -> None:
             sys.exit("nothing to regenerate - no shared answer text left")
         sys.exit("nothing to regenerate - no templated or duplicated answers found")
 
+    if args.only_templated:
+        if not (args.only_template or args.only_suspicious or args.only_duplicated):
+            targets = list(rows)      # the templated class is wider than TEMPLATES
+        flags = templated_flags(rows)
+        targets = [t for t in targets if flags.get(id(t))]
+    if args.subject:
+        wanted = args.subject.strip().lower()
+        targets = [t for t in targets if (t.get("subject") or "").strip().lower() == wanted]
+        if not targets:
+            sys.exit(f"no targets in subject {args.subject!r}")
+    if args.limit:
+        targets = targets[: args.limit]
+
     if args.dry_run:
         dry_run(rows, targets, args.only_template, args.only_suspicious,
-                args.only_duplicated)
+                args.only_duplicated, args.only_templated, args.subject)
         return
 
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -454,8 +498,6 @@ def main() -> None:
         targets = [t for t in targets if norm(t["question"]) not in done_q]
         print(f"resume: {before - len(targets):,} already done, {len(targets):,} left")
 
-    if args.limit:
-        targets = targets[: args.limit]
     # --max-requests bounds API calls, retries included, so the loop counts them rather
     # than truncating the target list here.
     if not targets:

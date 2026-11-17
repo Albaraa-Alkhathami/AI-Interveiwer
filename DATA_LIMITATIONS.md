@@ -107,6 +107,11 @@ The answers are machine-generated and were not fact-checked.
   an Angular `Component` versus `Directive`, the answer says "the first approach generally
   emphasizes one set of trade-offs". The `TEMPLATES` check sees 799 rows because it matches
   whole-answer boilerplate only.
+- **Even the 'specific' remaining text is templated with slots filled in.** A 0.98-cosine
+  sample shows clusters of 34-54 rows repeating one sentence with a stack name or deadline
+  substituted: "With Kafka Streams / Apache Kafka / Apache Flink already in place, that means
+  working with the stack we have". So the 5,074 reducible figure is not 5,074 paraphrases of
+  genuinely distinct answers; it is the same skeleton counted per slot value.
 - **21,145 answers (88.3%) open with a sentence that appears verbatim in another answer.**
   There are about six stock openings, each covering roughly 2,500 rows ("Before choosing a
   direction I would make the trade-off explicit..."). The bodies after them differ - the

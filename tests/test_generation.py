@@ -905,3 +905,66 @@ def test_released_row_is_targeted_again(tmp_path, monkeypatch, capsys):
 
     assert calls, "the released row was not targeted"
     assert any("failing write" in r["question"] for r in rows)
+
+
+# --------------------------------------------------------------------------- #
+# Subject scoping and the templated-sentence selector
+# --------------------------------------------------------------------------- #
+def _subject_dataset(tmp_path):
+    import csv as _csv
+    path = tmp_path / "combined_dataset.csv"
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        w = _csv.writer(fh)
+        w.writerow(["prompt", "question", "answer", "subject", "difficulty", "data_flag"])
+        # "A good answer should address the requirements" is in TEMPLATES
+        w.writerow(["p", "Java one?", "A good answer should address the requirements of the task.",
+                    "Java", "Easy", ""])
+        w.writerow(["p", "Java two?", "A good answer should address the requirements of it.",
+                    "Java", "Medium", ""])
+        w.writerow(["p", "React one?", "A good answer should address the requirements of this.",
+                    "React", "Easy", ""])
+    return path
+
+
+def test_subject_filter_is_exact_and_case_insensitive(tmp_path, monkeypatch, capsys):
+    _subject_dataset(tmp_path)
+    monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "SRC", tmp_path / "combined_dataset.csv")
+    monkeypatch.setattr(sys, "argv", ["regenerate_answers.py", "--only-template",
+                                      "--subject", "java", "--dry-run"])
+    ra.main()
+    out = capsys.readouterr().out
+    assert "target rows           : 2" in out, out
+    assert "subject: java" in out
+
+
+def test_unknown_subject_exits_without_matching_everything(tmp_path, monkeypatch):
+    _subject_dataset(tmp_path)
+    monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "SRC", tmp_path / "combined_dataset.csv")
+    monkeypatch.setattr(sys, "argv", ["regenerate_answers.py", "--only-template",
+                                      "--subject", "Klingon", "--dry-run"])
+    with pytest.raises(SystemExit):
+        ra.main()
+
+
+def test_templated_flags_finds_recurring_sentences():
+    stock = "The first approach generally emphasizes one set of trade-offs."
+    rows = [
+        {"question": "q1", "answer": f"{stock} I would profile the loop."},
+        {"question": "q2", "answer": f"{stock} I would shard the index."},
+        {"question": "q3", "answer": "A mutex guards shared state, a semaphore counts permits."},
+    ]
+    flags = ra.templated_flags(rows, min_count=2)
+    assert flags[id(rows[0])] and flags[id(rows[1])]
+    assert flags[id(rows[2])] is False
+
+
+def test_limit_applies_after_the_templated_and_subject_filters(tmp_path, monkeypatch, capsys):
+    _subject_dataset(tmp_path)
+    monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "SRC", tmp_path / "combined_dataset.csv")
+    monkeypatch.setattr(sys, "argv", ["regenerate_answers.py", "--only-template",
+                                      "--subject", "Java", "--limit", "1", "--dry-run"])
+    ra.main()
+    assert "target rows           : 1" in capsys.readouterr().out

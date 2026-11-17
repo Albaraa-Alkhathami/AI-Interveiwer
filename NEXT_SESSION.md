@@ -103,6 +103,19 @@ retry starts, parametrised over 2 and 4 workers so the queue depth cannot matter
 immediately when the retry is made synchronous again and passes on the pooled loop. A call that dies still writes its row, and the loop
 drains in-flight work after a quota stop instead of abandoning the chunk.
 
+**17 Nov, repair plan (not started):** the templating is concentrated - the 12 industry
+subjects (Cybersecurity, AI & Data Platforms, HealthTech, Drones, E-Commerce, FinTech,
+Gaming, DefenseTech, AdTech, Logistics, SaaS, FoodTech) hold ~20,300 of the ~21,800 repair
+targets at ~1,700 each; the technical subjects are largely clean (Java 143, React 83, CUDA 0).
+A one-subject pass on Cybersecurity is 1,711 targets = ~1,970 calls with the usual rejection
+rate = **7.2 days** at 237 accepted answers/day (~1.45M tokens). Start with a 237-row pilot
+(`--limit 237`) to judge quality before committing the week. New flags: `--subject NAME` and
+`--only-templated`, plus a corrected free-tier estimate in `--dry-run` (it assumed output
+tokens only and 300 tokens/answer, understating the cost ~3x). A 20-cluster sample at 0.98
+shows the residual 'specific' text is itself slot-filled ("With <stack> already in place,
+that means working with the stack we have"), so 5,074 overstates paraphrase: it is a second
+template layer with the stack or deadline substituted.
+
 **17 Nov, free measurement:** semantic clustering (local embeddings, no tokens) shows
 question paraphrase duplication is small - 1,253 exact-shared rows against 241 clusters /
 597 reducible rows at cosine 0.95 (179 / 457 at 0.98). Answer clustering on a 200-character
