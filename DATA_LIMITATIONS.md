@@ -100,6 +100,13 @@ The 5 original gaps were closed with generated questions; Machine Translation (G
 The answers are machine-generated and were not fact-checked.
 
 - No ground-truth answer, rubric or human rating exists anywhere in the file.
+- **14,692 answers (61.3%) contain no unique sentence at all** - every sentence also appears
+  in dozens or hundreds of other answers. 300 sentences recur at least 50 times, one of them
+  in 9,091 answers; 7,106 further answers mix stock sentences with specific text, and only
+  2,156 are free of them. These answers are therefore unusable as worked examples: asked about
+  an Angular `Component` versus `Directive`, the answer says "the first approach generally
+  emphasizes one set of trade-offs". The `TEMPLATES` check sees 799 rows because it matches
+  whole-answer boilerplate only.
 - **21,145 answers (88.3%) open with a sentence that appears verbatim in another answer.**
   There are about six stock openings, each covering roughly 2,500 rows ("Before choosing a
   direction I would make the trade-off explicit..."). The bodies after them differ - the

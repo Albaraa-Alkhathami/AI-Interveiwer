@@ -106,11 +106,13 @@ drains in-flight work after a quota stop instead of abandoning the chunk.
 **17 Nov, free measurement:** semantic clustering (local embeddings, no tokens) shows
 question paraphrase duplication is small - 1,253 exact-shared rows against 241 clusters /
 597 reducible rows at cosine 0.95 (179 / 457 at 0.98). Answer clustering on a 200-character
-prefix originally measured the template, not duplication: only 3,399 distinct vectors exist
-for 23,954 answers. Stock openings are now counted separately (15 sentences at count>=50,
-covering 20,783 rows) and stripped before the bodies are embedded, so the answer clusters
-describe paraphrase again. Full-answer paraphrase still needs whole-text embeddings (~35 min
-local, no API). Quarantine measured on seven past run files: 65 distinct questions
+prefix originally measured the template, not duplication: only 3,399 distinct vectors existed
+for 23,954 answers. Measured properly, the template is far bigger than the 799 boilerplate
+rows: 300 sentences recur at least 50 times, 20,783 answers open with one of them, and
+**14,692 answers (61.3%) contain no unique sentence at all** - 7,106 mix stock and specific
+text, 2,156 are clean. Comparing only the 9,246 answers with specific text left gives 705
+clusters / 5,074 reducible rows at cosine 0.98 (519 / 5,708 at 0.95, which over-merges
+same-topic prose). Quarantine measured on seven past run files: 65 distinct questions
 rejected, 9 rejected twice or more, 11 calls that would have been skipped at the default
 threshold of 2 - small now, but those rows recur every time they are targeted.
 
