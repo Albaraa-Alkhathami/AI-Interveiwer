@@ -317,8 +317,10 @@ def main() -> None:
     ap.add_argument("--out", default="answers_regenerated.csv", help="output CSV")
     ap.add_argument("--max-requests", type=int,
                     help="hard cap on API calls this run, corrective retries included")
-    ap.add_argument("--no-retry", action="store_true",
-                    help="do not spend a second call on a guard rejection")
+    ap.add_argument("--retry", action="store_true",
+                    help="opt in to one corrective second call per guard rejection "
+                         "(only worth it if it recovers more than ~85%% of them)")
+    ap.add_argument("--no-retry", action="store_true", help="accepted for compatibility")
     ap.add_argument("--resume", action="store_true",
                     help="skip questions already present in --out (continue a stopped run)")
     ap.add_argument("--apply", metavar="FILE", help="merge a reviewed output CSV into the dataset")
@@ -471,7 +473,7 @@ def main() -> None:
                         if not reason and is_suspicious(new, r["question"]):
                             reason = "still contains a metric or company name"
                         # Only failures a better prompt can fix, and only within budget.
-                        retry_now = (reason and is_retryable(reason)
+                        retry_now = (reason and args.retry and is_retryable(reason)
                                      and not args.no_retry and not STOP.is_set()
                                      and requests_used < request_budget)
                         if retry_now:

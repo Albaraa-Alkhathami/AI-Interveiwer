@@ -92,14 +92,15 @@ boilerplate 870 → 799, thin answers 89 → 74. Chat-bubble chatter and filler 
 effect (32 → 27, 12 → 10).
 
 **17 Nov, corrective retry added:** a guard rejection now gets exactly one retry whose prompt
-quotes the failing rule (and the offending figure). It is off with `--no-retry`. Measure it on
-the next real run: keep it only if `recovered / spent` exceeds ~85%, otherwise the call is
-better spent on a fresh target.
+quotes the failing rule (and the offending figure). It is **off by default** and only runs with
+`--retry`. Measure it on one real run with `--retry` before enabling it anywhere else: keep it
+only if `recovered / spent` exceeds ~85%, otherwise the call is better spent on a fresh target.
 Retries are submitted to the same pool, not called from the consumer thread: an A/B with 8
 targets, 2 workers and a 50 ms fake latency took 0.54 s when the retry blocked the consumer
 and 0.41 s (ideal 0.40 s) once pooled. The overlap is now asserted without timing: a
-two-party barrier pairs the retry with a target that can only be submitted afterwards, which
-fails on the synchronous loop (5.4 s barrier timeout) and passes on the pooled one (0.28 s). A call that dies still writes its row, and the loop
+the test has the retry record which thread it ran on and holds a second target open until the
+retry starts, parametrised over 2 and 4 workers so the queue depth cannot matter. It fails
+immediately when the retry is made synchronous again and passes on the pooled loop. A call that dies still writes its row, and the loop
 drains in-flight work after a quota stop instead of abandoning the chunk.
 
 **17 Nov, after the cap:** a 4-token probe returned 200 with 7,924 tokens "available", so a run

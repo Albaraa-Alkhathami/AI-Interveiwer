@@ -567,7 +567,7 @@ def test_rejection_reason_is_fed_back_into_one_retry(tmp_path, monkeypatch, caps
 
     monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
     # one target: the second row would get its own retry and muddy the call count
-    rows, out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "1"))
+    rows, out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "1", "--retry"))
 
     assert len(bodies) == 2, "expected exactly one corrective retry"
     retry_prompt = bodies[1]["messages"][1]["content"]
@@ -589,14 +589,15 @@ def test_second_failure_is_recorded_and_not_retried_again(tmp_path, monkeypatch,
         return completion(BAD_METRIC)
 
     monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
-    rows, _out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "1"))
+    rows, _out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "1", "--retry"))
 
     assert len(calls) == 2, f"expected 2 calls for 1 target, got {len(calls)}"
     assert rows[0]["status"].startswith("rejected:")
     assert "; retry:" in rows[0]["status"]
 
 
-def test_no_retry_flag_keeps_the_old_single_call(tmp_path, monkeypatch, capsys):
+def test_retry_is_off_by_default(tmp_path, monkeypatch, capsys):
+    """Opt-in: a rejection costs one call unless --retry is passed."""
     _dup_dataset(tmp_path)
     calls: list[int] = []
 
@@ -605,7 +606,7 @@ def test_no_retry_flag_keeps_the_old_single_call(tmp_path, monkeypatch, capsys):
         return completion(BAD_METRIC)
 
     monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
-    rows, _out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "1", "--no-retry"))
+    rows, _out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "1"))
 
     assert len(calls) == 1
     assert rows[0]["status"].startswith("rejected:")
@@ -626,7 +627,7 @@ def test_retry_is_not_spent_once_the_request_budget_is_gone(tmp_path, monkeypatc
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(sys, "argv", ["regenerate_answers.py", "--only-duplicated",
                                       "--workers", "1", "--max-requests", "1",
-                                      "--out", "out.csv"])
+                                      "--retry", "--out", "out.csv"])
     ra.main()
     assert len(calls) == 1, "the budget of one call must not fund a retry"
 
@@ -656,7 +657,7 @@ def test_dead_retry_does_not_abandon_the_rest_of_the_chunk(tmp_path, monkeypatch
 
     monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
     rows, out = _run_regenerate(tmp_path, monkeypatch, capsys,
-                                ("--limit", "2", "--workers", "2"))
+                                ("--limit", "2", "--workers", "2", "--retry"))
 
     assert len(rows) == 2, f"a paid-for row was dropped: {[r['status'] for r in rows]}"
     statuses = sorted(r["status"].split(":")[0] for r in rows)
@@ -664,13 +665,15 @@ def test_dead_retry_does_not_abandon_the_rest_of_the_chunk(tmp_path, monkeypatch
     assert "quota hit after" in out
 
 
-def test_retry_overlaps_another_in_flight_call(tmp_path, monkeypatch, capsys):
-    """The retry must run beside the pool, not in front of it.
+@pytest.mark.parametrize("workers", [2, 4])
+def test_retry_runs_beside_another_in_flight_call(tmp_path, monkeypatch, capsys, workers):
+    """The retry must run on a pool thread, not on the thread that drains results.
 
-    A two-party barrier pairs the corrective retry with target 5, which can only be
-    submitted once the retry has been queued. If the retry were called on the consumer
-    thread, target 5 could never start, the barrier would time out, and the retry would
-    be recorded as an error. No timing is involved, so this cannot flake.
+    Target 2 blocks until the retry has started, so the two are provably in flight
+    together; the retry then records which thread it ran on. Neither assertion depends
+    on how many targets the pool queues at once: target 2 is always in the first batch,
+    and a retry executed inline runs on the consumer thread and fails the thread check.
+    Parametrised over worker counts, because that is what sets the queue depth.
     """
     import csv as _csv
     import threading
@@ -683,28 +686,30 @@ def test_retry_overlaps_another_in_flight_call(tmp_path, monkeypatch, capsys):
             w.writerow(["p", f"Question {i} about failure isolation?", "shared old answer",
                         "Java", "Easy", ""])
 
-    barrier = threading.Barrier(2, timeout=5)
+    retry_started = threading.Event()
+    ran_on_main: list[bool] = []
 
     def fake(req, timeout=None):
         user = json.loads(req.data)["messages"][1]["content"]
         if "rejected by an automated check" in user:
-            barrier.wait()                       # pairs with the late target
+            ran_on_main.append(threading.current_thread() is threading.main_thread())
+            retry_started.set()
             return completion(GOOD_ANSWER + " I rechecked the isolation boundary.")
         if "Question 1 about" in user:
-            return completion(BAD_METRIC)         # first target is rejected
-        if "Question 5 about" in user:
-            barrier.wait()                        # only reachable after a refill
+            return completion(BAD_METRIC)          # first target is rejected -> retried
+        if "Question 2 about" in user:
+            assert retry_started.wait(5), "the retry never ran while this call was waiting"
         return completion(GOOD_ANSWER + f" Ref {abs(hash(user)) % 9973}.")
 
     monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
     rows, out = _run_regenerate(tmp_path, monkeypatch, capsys,
-                                ("--workers", "2", "--max-requests", "20"))
+                                ("--workers", str(workers), "--max-requests", "20", "--retry"))
 
     assert len(rows) == 8, f"not every target was recorded: {len(rows)}"
-    assert not [r for r in rows if r["status"].startswith("error")], \
-        [r["status"] for r in rows if r["status"].startswith("error")]
+    assert not [r for r in rows if r["status"].startswith("error")],         [r["status"] for r in rows if r["status"].startswith("error")]
     first = next(r for r in rows if "Question 1 about" in r["question"])
     assert first["status"] == "ok", first["status"]
+    assert ran_on_main == [False], "the retry ran on the consumer thread"
     assert "1 recovered" in out
 
 
@@ -718,7 +723,7 @@ def test_duplicate_rejection_is_not_retried(tmp_path, monkeypatch, capsys):
         return completion(GOOD_ANSWER)            # identical text for both targets
 
     monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
-    rows, out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "2"))
+    rows, out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "2", "--retry"))
 
     assert len(calls) == 2, f"a duplicate rejection was retried: {len(calls)} calls"
     assert any(r["status"].startswith("rejected: duplicate") for r in rows), \
