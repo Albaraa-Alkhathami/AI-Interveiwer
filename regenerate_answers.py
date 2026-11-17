@@ -28,7 +28,7 @@ import time
 import urllib.error
 import urllib.request
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
@@ -412,78 +412,89 @@ def main() -> None:
         chunk_size = max(args.workers * 2, 1)
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             queue = list(targets)
-            while queue and not STOP.is_set() and requests_used < request_budget:
-                take = min(chunk_size, request_budget - requests_used)
-                chunk, queue = queue[:take], queue[take:]
-                requests_used += len(chunk)
-                futures = {
-                    pool.submit(call_llm, r["question"], r["subject"], r["difficulty"],
-                                api_key, base_url, model,
-                                extra=NO_METRICS if args.only_suspicious else ""): r
-                    for r in chunk
-                }
-                for fut in as_completed(futures):
-                    r = futures[fut]
-                    done += 1
+            meta: dict = {}  # future -> (row, retry_reason or None)
+
+            inflight: set = set()
+
+            def submit(row, extra=""):
+                fut = pool.submit(call_llm, row["question"], row["subject"], row["difficulty"],
+                                  api_key, base_url, model, extra=extra)
+                meta[fut] = (row, None)
+                return fut
+
+            # Drain even after STOP is set: requests already in flight were paid for, and
+            # abandoning them silently is how a chunk loses rows it could still record.
+            while queue or inflight:
+                if not STOP.is_set():
+                    # Top the pool up but never queue far ahead: if the daily cap fires, at
+                    # most one round of requests is spent against a dead budget.
+                    while queue and len(inflight) < chunk_size and requests_used < request_budget:
+                        take = min(chunk_size - len(inflight), len(queue),
+                                   request_budget - requests_used)
+                        batch, queue = queue[:take], queue[take:]
+                        requests_used += len(batch)
+                        inflight.update(
+                            submit(r, NO_METRICS if args.only_suspicious else "") for r in batch)
+                if not inflight:
+                    break
+                finished, inflight = wait(inflight, return_when=FIRST_COMPLETED)
+                for fut in finished:
+                    r, prior = meta.pop(fut)
                     try:
                         new = fut.result()
-                        reason = validate(new, seen)
-                        if not reason and is_suspicious(new, r["question"]):
-                            # applies in every mode: a rewrite can invent a figure even when the
-                            # old answer was merely boilerplate or duplicated
-                            reason = "still contains a metric or company name"
-                        if reason and not args.no_retry and not STOP.is_set() \
-                                and requests_used < request_budget:
-                            # One corrective retry, paid for out of the same budget: the guard
-                            # rejection already cost a request, so spending one more on a
-                            # targeted fix is cheaper than leaving the row for tomorrow.
-                            retried += 1
-                            requests_used += 1
-                            try:
-                                second = call_llm(r["question"], r["subject"], r["difficulty"],
-                                                  api_key, base_url, model,
-                                                  extra=correction_for(reason, new, r["question"]))
-                            except Exception as e:  # noqa: BLE001 - quota or network
-                                failed += 1
-                                writer.writerow({**{k: r[k] for k in ("question", "subject",
-                                                                     "difficulty")},
-                                                 "old_answer": r["answer"], "new_answer": "",
-                                                 "status": f"error: {e}"})
-                                if STOP.is_set():
-                                    break
-                                continue
-                            again = validate(second, seen)
-                            if not again and is_suspicious(second, r["question"]):
-                                again = "still contains a metric or company name"
-                            if again:
-                                reason = f"{reason}; retry: {again}"
-                            else:
-                                new, reason = second, None
-                                recovered += 1
-                        if reason:
-                            rejected += 1
-                            writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
-                                             "old_answer": r["answer"], "new_answer": new,
-                                             "status": f"rejected: {reason}"})
-                        else:
-                            seen.add(norm(new))
-                            ok += 1
-                            writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
-                                             "old_answer": r["answer"], "new_answer": new,
-                                             "status": "ok"})
-                    except Exception as e:  # noqa: BLE001
+                    except Exception as e:  # noqa: BLE001 - quota, auth, network
+                        # A dead call still gets a row: the target stays visible as failed
+                        # instead of vanishing, and the rest of the pool keeps draining.
                         failed += 1
                         writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
                                          "old_answer": r["answer"], "new_answer": "",
                                          "status": f"error: {e}"})
-                    if done % 100 == 0 or done == len(targets):
+                        continue
+                    if prior is None:
+                        reason = validate(new, seen)
+                        if not reason and is_suspicious(new, r["question"]):
+                            reason = "still contains a metric or company name"
+                        if reason and not args.no_retry and not STOP.is_set()                                 and requests_used < request_budget:
+                            # Submit the corrective retry rather than calling it here: done
+                            # inline, the consumer thread blocks for the length of the call
+                            # (or its 429 wait) and every other worker sits idle meanwhile.
+                            retried += 1
+                            requests_used += 1
+                            fut2 = pool.submit(call_llm, r["question"], r["subject"],
+                                               r["difficulty"], api_key, base_url, model,
+                                               extra=correction_for(reason, new, r["question"]))
+                            meta[fut2] = (r, reason)
+                            inflight.add(fut2)
+                            continue
+                    else:
+                        again = validate(new, seen)
+                        if not again and is_suspicious(new, r["question"]):
+                            again = "still contains a metric or company name"
+                        if again:
+                            reason = f"{prior}; retry: {again}"
+                        else:
+                            reason = None
+                            recovered += 1
+                    if reason:
+                        rejected += 1
+                        writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
+                                         "old_answer": r["answer"], "new_answer": new,
+                                         "status": f"rejected: {reason}"})
+                    else:
+                        seen.add(norm(new))
+                        ok += 1
+                        writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
+                                         "old_answer": r["answer"], "new_answer": new,
+                                         "status": "ok"})
+                    written = ok + rejected + failed
+                    if written % 100 == 0 or written == len(targets):
                         fh.flush()
-                        print(f"  {done:,}/{len(targets):,}  ok={ok:,} rejected={rejected:,} "
+                        print(f"  {written:,}/{len(targets):,}  ok={ok:,} rejected={rejected:,} "
                               f"failed={failed:,} retried={retried:,} recovered={recovered:,}")
-                if STOP.is_set():
-                    fh.flush()
-                    print(f"  quota hit after {done:,} request(s) - {len(queue):,} left unsent")
-                    break
+            if STOP.is_set():
+                fh.flush()
+                print(f"  quota hit after {requests_used:,} request(s) - "
+                      f"{len(queue) + len(inflight):,} target(s) left unsent")
 
     print(f"\nwrote {out_path.name}: ok={ok:,} rejected={rejected:,} failed={failed:,}"
           f" calls={requests_used:,}")

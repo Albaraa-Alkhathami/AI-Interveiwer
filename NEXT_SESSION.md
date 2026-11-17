@@ -95,6 +95,10 @@ effect (32 → 27, 12 → 10).
 quotes the failing rule (and the offending figure). It is off with `--no-retry`. Measure it on
 the next real run: keep it only if `recovered / spent` exceeds ~85%, otherwise the call is
 better spent on a fresh target.
+Retries are submitted to the same pool, not called from the consumer thread: an A/B with 8
+targets, 2 workers and a 50 ms fake latency took 0.54 s when the retry blocked the consumer
+and 0.41 s (ideal 0.40 s) once pooled. A call that dies still writes its row, and the loop
+drains in-flight work after a quota stop instead of abandoning the chunk.
 
 **17 Nov, after the cap:** a 4-token probe returned 200 with 7,924 tokens "available", so a run
 was started; its first real answer failed with `per day` and the run stopped after 4 requests

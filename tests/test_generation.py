@@ -629,3 +629,36 @@ def test_retry_is_not_spent_once_the_request_budget_is_gone(tmp_path, monkeypatc
                                       "--out", "out.csv"])
     ra.main()
     assert len(calls) == 1, "the budget of one call must not fund a retry"
+
+
+def test_dead_retry_does_not_abandon_the_rest_of_the_chunk(tmp_path, monkeypatch, capsys):
+    """A retry that dies on the daily cap must not drop the row still in flight.
+
+    This is the regression the chunk loop was rewritten for: the old code broke out of
+    the per-chunk loop on STOP, so a second target that had already been paid for was
+    never written and vanished from the run file.
+    """
+    import threading
+
+    _dup_dataset(tmp_path)
+    bodies: list[dict] = []
+
+    def fake(req, timeout=None):
+        bodies.append(json.loads(req.data))
+        user = bodies[-1]["messages"][1]["content"]
+        if "rejected by an automated check" in user:
+            # the corrective retry hits the daily cap: STOP is set mid-chunk
+            raise http_error(429, '{"error":{"message":"Limit reached on tokens per day (TPD)"}}')
+        if len(bodies) == 1:
+            return completion(BAD_METRIC)          # target 1: rejected -> retried
+        threading.Event().wait(0.25)               # target 2: slow enough to still be in flight
+        return completion(GOOD_ANSWER)
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    rows, out = _run_regenerate(tmp_path, monkeypatch, capsys,
+                                ("--limit", "2", "--workers", "2"))
+
+    assert len(rows) == 2, f"a paid-for row was dropped: {[r['status'] for r in rows]}"
+    statuses = sorted(r["status"].split(":")[0] for r in rows)
+    assert statuses == ["error", "ok"], statuses
+    assert "quota hit after" in out
