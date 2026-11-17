@@ -69,7 +69,9 @@ enforces the mechanical ones:
   rejections per question in the gitignored `quarantine.json` and stops targeting a row at
   the threshold; a later success clears it. Some questions cannot satisfy the guard by
   construction ("what is folding?" invites a two-line answer that the 300-character rule
-  rejects), and re-targeting them daily buys the same rejection.
+  rejects), and re-targeting them daily buys the same rejection. Release rows with
+  `--release-quarantine` (all) or `--release-quarantine TEXT` (questions containing TEXT);
+  that command exits without running a batch.
 - **Retry only what a prompt can fix.** `RETRYABLE` covers invented specifics, banned phrasing,
   length and unfinished sentences. A duplicate of another generated answer is excluded: the
   model cannot see the answer it collided with, so asking again returns the same text.
@@ -90,7 +92,7 @@ enforces the mechanical ones:
 | `search_app.py` | validate, embed, search | `--validate`, `--rebuild`, `-q`, `-s`, `-d`, `-k`, `--interactive` |
 | `regenerate_answers.py` | rewrite weak answers | `--only-template`, `--only-suspicious`, `--only-duplicated`, `--resume`, `--max-requests` (counts retries), `--retry` (opt-in), `--workers`, `--dry-run`, `--apply` |
 | `generate_questions.py` | fill coverage gaps | `--plan`, `--auto`, `--budget`, `--subject`, `--difficulty`, `--count`, `--apply` |
-| `cluster_duplicates.py` | measure paraphrase/opening duplication, no model | `--only questions\|answers`, `--thresholds`, `--answer-prefix`, `--json` |
+| `cluster_duplicates.py` | measure paraphrase/opening duplication, no model | `--only questions\|answers\|openings`, `--thresholds`, `--opening-min-count`, `--answer-prefix`, `--json` |
 | `clean_answers.py` | mechanical answer fixes, no model | dry run by default, `--apply`, `--show N` |
 | `audit_dataset.py` | read-only quality audit, no model | `--question/--answer/--subject/--difficulty`, `--json`; exits 1 on blockers |
 | `build_final_workbook.py` | regenerate `final_dataset.xlsx` from the CSV | none; needs `openpyxl`, writes next to the script |

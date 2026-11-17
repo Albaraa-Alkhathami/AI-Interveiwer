@@ -344,6 +344,9 @@ def main() -> None:
     ap.add_argument("--out", default="answers_regenerated.csv", help="output CSV")
     ap.add_argument("--max-requests", type=int,
                     help="hard cap on API calls this run, corrective retries included")
+    ap.add_argument("--release-quarantine", nargs="?", const="", metavar="TEXT",
+                    help="clear quarantined rows (all, or those whose question contains TEXT) "
+                         "and exit; use it when a row was held for the wrong reason")
     ap.add_argument("--quarantine-after", type=int, default=2, metavar="N",
                     help="stop targeting a question after N guard rejections (0 disables)")
     ap.add_argument("--retry", action="store_true",
@@ -353,6 +356,17 @@ def main() -> None:
                     help="skip questions already present in --out (continue a stopped run)")
     ap.add_argument("--apply", metavar="FILE", help="merge a reviewed output CSV into the dataset")
     args = ap.parse_args()
+
+    if args.release_quarantine is not None:
+        held = load_quarantine()
+        pattern = args.release_quarantine.strip().lower()
+        kept = {q: info for q, info in held.items() if pattern and pattern not in q}
+        released = len(held) - len(kept)
+        save_quarantine(kept)
+        scope = f"matching {pattern!r}" if pattern else "(all)"
+        print(f"released {released:,} quarantined question(s) {scope}; "
+              f"{len(kept):,} still held")
+        return
 
     with open(SRC, encoding="utf-8-sig", newline="") as fh:
         rows = list(csv.DictReader(fh))

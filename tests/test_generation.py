@@ -838,3 +838,70 @@ def test_quarantine_can_be_disabled(tmp_path, monkeypatch, capsys):
                     ("--limit", "2", "--quarantine-after", "0"))
 
     assert len(calls) == 2, "quarantine-after 0 must target everything"
+
+
+# --------------------------------------------------------------------------- #
+# Releasing quarantined rows
+# --------------------------------------------------------------------------- #
+def test_release_quarantine_clears_everything_and_does_not_run(tmp_path, monkeypatch, capsys):
+    (tmp_path / "quarantine.json").write_text(json.dumps({
+        "q one?": {"n": 2, "reason": "too short"},
+        "q two?": {"n": 3, "reason": "too short"},
+    }), encoding="utf-8")
+    monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "SRC", tmp_path / "combined_dataset.csv")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(ra.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("release must not call the model"))
+    monkeypatch.setattr(sys, "argv", ["regenerate_answers.py", "--release-quarantine"])
+
+    ra.main()
+
+    state = json.loads((tmp_path / "quarantine.json").read_text(encoding="utf-8"))
+    assert state == {}
+    assert "released 2 quarantined question(s)" in capsys.readouterr().out
+
+
+def test_release_quarantine_by_substring_keeps_the_rest(tmp_path, monkeypatch, capsys):
+    (tmp_path / "quarantine.json").write_text(json.dumps({
+        "what is folding?": {"n": 2, "reason": "too short"},
+        "how do you cache?": {"n": 2, "reason": "unfinished sentence"},
+    }), encoding="utf-8")
+    monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "SRC", tmp_path / "combined_dataset.csv")
+    monkeypatch.setattr(sys, "argv",
+                        ["regenerate_answers.py", "--release-quarantine", "FOLDING"])
+
+    ra.main()
+
+    state = json.loads((tmp_path / "quarantine.json").read_text(encoding="utf-8"))
+    assert list(state) == ["how do you cache?"]
+    assert "1 still held" in capsys.readouterr().out
+
+
+def test_released_row_is_targeted_again(tmp_path, monkeypatch, capsys):
+    """A stranded row must come back into the queue once released."""
+    _dup_dataset(tmp_path)
+    (tmp_path / "quarantine.json").write_text(json.dumps({
+        "how do you isolate a failing write?": {"n": 5, "reason": "too short"},
+    }), encoding="utf-8")
+    monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "SRC", tmp_path / "combined_dataset.csv")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(sys, "argv", ["regenerate_answers.py", "--release-quarantine"])
+    ra.main()                                   # maintenance command only, no run
+
+    state = json.loads((tmp_path / "quarantine.json").read_text(encoding="utf-8"))
+    assert state == {}, state
+
+    calls: list[int] = []
+
+    def fake(req, timeout=None):
+        calls.append(1)
+        return completion(GOOD_ANSWER)
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    rows, _out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "2"))
+
+    assert calls, "the released row was not targeted"
+    assert any("failing write" in r["question"] for r in rows)
