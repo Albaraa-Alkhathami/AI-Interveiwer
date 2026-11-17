@@ -100,6 +100,13 @@ The 5 original gaps were closed with generated questions; Machine Translation (G
 The answers are machine-generated and were not fact-checked.
 
 - No ground-truth answer, rubric or human rating exists anywhere in the file.
+- **21,145 answers (88.3%) open with a sentence that appears verbatim in another answer.**
+  There are about six stock openings, each covering roughly 2,500 rows ("Before choosing a
+  direction I would make the trade-off explicit..."). The bodies after them differ - the
+  largest opening group has 2,581 rows and 54 distinct continuations - so this is opening
+  boilerplate, not duplicated answers, and no existing check measured it: the `TEMPLATES`
+  list only matches whole-answer boilerplate (799 rows) and exact-duplicate counting sees
+  1,086 rows.
 - **799 answers (3.3%) are still boilerplate** — the templated "A good answer should address the requirements…" / "X can be understood as a core concept…" text. These are being replaced in batches of ~220 per day, limited by the free-tier token budget. Until they are gone, any answer-length or answer-quality statistic is contaminated by them.
 - A mechanical cleanup (`clean_answers.py`) removed assistant chatter ("Let me know if you need anything else…") from 553 answers, leading filler ("Certainly.", "Sure.") and stray markdown bold. 28 answers still contain mid-text chatter and 9 begin with filler, because neither could be removed without damaging the sentence.
 - **74 answers are under 100 characters** and 34 were too thin to clean; they are placeholders rather than explanations.

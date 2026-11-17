@@ -773,3 +773,68 @@ def test_quota_stop_without_retry_records_every_in_flight_row(tmp_path, monkeypa
     assert sorted(r["status"].split(":")[0] for r in rows) == ["error", "ok", "ok", "ok"]
     assert "quota hit after" in out
     assert "retried=" not in out, "retry counters should stay quiet when retries are off"
+
+
+# --------------------------------------------------------------------------- #
+# Attempt-count quarantine
+# --------------------------------------------------------------------------- #
+def test_a_rejection_is_counted_in_the_quarantine_file(tmp_path, monkeypatch, capsys):
+    _dup_dataset(tmp_path)
+    monkeypatch.setattr(ra.urllib.request, "urlopen",
+                        lambda req, timeout=None: completion(BAD_METRIC))
+    _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "1"))
+
+    state = json.loads((tmp_path / "quarantine.json").read_text(encoding="utf-8"))
+    assert list(state.values())[0]["n"] == 1
+    assert "metric" in list(state.values())[0]["reason"]
+
+
+def test_a_question_at_the_threshold_is_not_targeted_again(tmp_path, monkeypatch, capsys):
+    _dup_dataset(tmp_path)
+    (tmp_path / "quarantine.json").write_text(json.dumps({
+        "how do you isolate a failing write?": {"n": 2, "reason": "too short"},
+    }), encoding="utf-8")
+    calls: list[int] = []
+
+    def fake(req, timeout=None):
+        calls.append(1)
+        return completion(GOOD_ANSWER)
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    rows, out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "2"))
+
+    assert len(calls) == 1, f"a quarantined question was retried: {len(calls)} calls"
+    assert len(rows) == 1
+    assert "quarantine: 1 row(s) skipped" in out
+
+
+def test_a_success_clears_a_quarantine_entry(tmp_path, monkeypatch, capsys):
+    _dup_dataset(tmp_path)
+    (tmp_path / "quarantine.json").write_text(json.dumps({
+        "how do you isolate a failing write?": {"n": 1, "reason": "too short"},
+    }), encoding="utf-8")
+    monkeypatch.setattr(ra.urllib.request, "urlopen",
+                        lambda req, timeout=None: completion(GOOD_ANSWER))
+
+    _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "2"))
+
+    state = json.loads((tmp_path / "quarantine.json").read_text(encoding="utf-8"))
+    assert "how do you isolate a failing write?" not in state, state
+
+
+def test_quarantine_can_be_disabled(tmp_path, monkeypatch, capsys):
+    _dup_dataset(tmp_path)
+    (tmp_path / "quarantine.json").write_text(json.dumps({
+        "how do you isolate a failing write?": {"n": 9, "reason": "too short"},
+    }), encoding="utf-8")
+    calls: list[int] = []
+
+    def fake(req, timeout=None):
+        calls.append(1)
+        return completion(GOOD_ANSWER)
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    _run_regenerate(tmp_path, monkeypatch, capsys,
+                    ("--limit", "2", "--quarantine-after", "0"))
+
+    assert len(calls) == 2, "quarantine-after 0 must target everything"

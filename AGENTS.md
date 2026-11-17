@@ -65,6 +65,11 @@ enforces the mechanical ones:
   more than ~85% of rejections; below that, leaving `--retry` off yields more accepted answers.
   Every run prints `corrective retries: N spent, M recovered`, so the two modes can be compared
   on the same dataset instead of argued about.
+- **Quarantine what keeps failing.** `--quarantine-after N` (default 2) counts guard
+  rejections per question in the gitignored `quarantine.json` and stops targeting a row at
+  the threshold; a later success clears it. Some questions cannot satisfy the guard by
+  construction ("what is folding?" invites a two-line answer that the 300-character rule
+  rejects), and re-targeting them daily buys the same rejection.
 - **Retry only what a prompt can fix.** `RETRYABLE` covers invented specifics, banned phrasing,
   length and unfinished sentences. A duplicate of another generated answer is excluded: the
   model cannot see the answer it collided with, so asking again returns the same text.
@@ -85,6 +90,7 @@ enforces the mechanical ones:
 | `search_app.py` | validate, embed, search | `--validate`, `--rebuild`, `-q`, `-s`, `-d`, `-k`, `--interactive` |
 | `regenerate_answers.py` | rewrite weak answers | `--only-template`, `--only-suspicious`, `--only-duplicated`, `--resume`, `--max-requests` (counts retries), `--retry` (opt-in), `--workers`, `--dry-run`, `--apply` |
 | `generate_questions.py` | fill coverage gaps | `--plan`, `--auto`, `--budget`, `--subject`, `--difficulty`, `--count`, `--apply` |
+| `cluster_duplicates.py` | measure paraphrase/opening duplication, no model | `--only questions\|answers`, `--thresholds`, `--answer-prefix`, `--json` |
 | `clean_answers.py` | mechanical answer fixes, no model | dry run by default, `--apply`, `--show N` |
 | `audit_dataset.py` | read-only quality audit, no model | `--question/--answer/--subject/--difficulty`, `--json`; exits 1 on blockers |
 | `build_final_workbook.py` | regenerate `final_dataset.xlsx` from the CSV | none; needs `openpyxl`, writes next to the script |

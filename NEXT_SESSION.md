@@ -103,6 +103,16 @@ retry starts, parametrised over 2 and 4 workers so the queue depth cannot matter
 immediately when the retry is made synchronous again and passes on the pooled loop. A call that dies still writes its row, and the loop
 drains in-flight work after a quota stop instead of abandoning the chunk.
 
+**17 Nov, free measurement:** semantic clustering (local embeddings, no tokens) shows
+question paraphrase duplication is small - 1,253 exact-shared rows against 241 clusters /
+597 reducible rows at cosine 0.95 (179 / 457 at 0.98). Answer clustering on a 200-character
+prefix is invalid for paraphrase: only 3,399 distinct vectors exist for 23,954 answers,
+because 88.3% share their first sentence. That is the finding: six stock openings, ~2,500
+rows each, with distinct bodies. Full-answer paraphrase still needs whole-text embeddings
+(~35 min local, no API). Quarantine measured on seven past run files: 65 distinct questions
+rejected, 9 rejected twice or more, 11 calls that would have been skipped at the default
+threshold of 2 - small now, but those rows recur every time they are targeted.
+
 **17 Nov, default-path cleanup:** the loop no longer carries the dead `--no-retry` flag or an
 unused counter, the four near-identical row writes became one `record()` helper, and the
 progress line prints retry counters only when `--retry` is on. A new test pins the default

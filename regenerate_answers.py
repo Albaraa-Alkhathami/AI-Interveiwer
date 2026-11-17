@@ -135,6 +135,33 @@ def validate(answer: str, seen: set[str]) -> str | None:
     return None
 
 
+def quarantine_path() -> Path:
+    return BASE / "quarantine.json"
+
+
+def load_quarantine() -> dict[str, dict]:
+    """Rows the guard has rejected before, with the reason and how often.
+
+    Some questions cannot satisfy the guard by construction - "how much did you improve
+    it?" invites a figure the answer may not state - so re-targeting them every day spends
+    budget to reproduce the same rejection. The file is gitignored state, not data.
+    """
+    path = quarantine_path()
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_quarantine(state: dict[str, dict]) -> None:
+    path = quarantine_path()
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=1, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def retry_hint(text: str) -> float | None:
     import re
 
@@ -317,6 +344,8 @@ def main() -> None:
     ap.add_argument("--out", default="answers_regenerated.csv", help="output CSV")
     ap.add_argument("--max-requests", type=int,
                     help="hard cap on API calls this run, corrective retries included")
+    ap.add_argument("--quarantine-after", type=int, default=2, metavar="N",
+                    help="stop targeting a question after N guard rejections (0 disables)")
     ap.add_argument("--retry", action="store_true",
                     help="opt in to one corrective second call per guard rejection "
                          "(only worth it if it recovers more than ~85%% of them)")
@@ -372,6 +401,16 @@ def main() -> None:
     targets = pick_targets(rows, only_template=args.only_template,
                            only_suspicious=args.only_suspicious,
                            only_duplicated=args.only_duplicated)
+    quarantine = load_quarantine() if args.quarantine_after > 0 else {}
+    quarantine_dirty = False
+    if quarantine:
+        blocked = {q for q, info in quarantine.items()
+                   if info.get("n", 0) >= args.quarantine_after}
+        held = [t for t in targets if norm(t["question"]) in blocked]
+        if held:
+            targets = [t for t in targets if norm(t["question"]) not in blocked]
+            print(f"quarantine: {len(held):,} row(s) skipped after "
+                  f"{args.quarantine_after} failed attempt(s)")
     if not targets:
         if args.only_suspicious:
             sys.exit("nothing to regenerate - no invented metrics or company names left")
@@ -499,10 +538,18 @@ def main() -> None:
                     if reason:
                         rejected += 1
                         record(r, new, f"rejected: {reason}")
+                        if args.quarantine_after > 0:
+                            key = norm(r["question"])
+                            entry = quarantine.get(key, {"n": 0})
+                            entry.update(n=entry.get("n", 0) + 1, reason=reason)
+                            quarantine[key] = entry
+                            quarantine_dirty = True
                     else:
                         seen.add(norm(new))
                         ok += 1
                         record(r, new, "ok")
+                        if quarantine.pop(norm(r["question"]), None) is not None:
+                            quarantine_dirty = True
                     written = ok + rejected + failed
                     if written % 100 == 0 or written == len(targets):
                         fh.flush()
@@ -520,6 +567,12 @@ def main() -> None:
     if retried:
         print(f"corrective retries: {retried:,} spent, {recovered:,} recovered "
               f"({100 * recovered / retried:.0f}% success)")
+    if args.quarantine_after > 0 and quarantine_dirty:
+        save_quarantine(quarantine)
+        held = sum(1 for v in quarantine.values()
+                   if v.get("n", 0) >= args.quarantine_after)
+        print(f"quarantine: {held:,} question(s) at {args.quarantine_after}+ rejection(s)")
+
     if STOP.is_set():
         print("STOPPED on an unrecoverable provider error (quota or credentials) — nothing was charged.")
         print("Continue later with:")

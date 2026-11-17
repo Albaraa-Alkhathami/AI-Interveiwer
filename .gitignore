@@ -37,3 +37,6 @@ answers_suspicious*.csv
 answers_template*.csv
 answers_duplicated*.csv
 run_*.log
+
+# quarantine state (per-question rejection counts)
+quarantine.json
