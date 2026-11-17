@@ -100,20 +100,22 @@ The 5 original gaps were closed with generated questions; Machine Translation (G
 The answers are machine-generated and were not fact-checked.
 
 - No ground-truth answer, rubric or human rating exists anywhere in the file.
-- **18,822 answers (78.6%) contain no unique sentence at all** - every sentence also appears
+- **18,822 answers (78.7%) contain no unique sentence at all** - every sentence also appears
   in dozens or hundreds of other answers. A sentence counts as a template when it recurs
   verbatim 50+ times (300 such sentences) or when its slot-filled skeleton recurs 25+ times
   (317 skeletons: the generator swaps a step number, a stack name, a figure or the row's own
   subject, so "(2) agree the success measure..." and "(3) agree the success measure..." are one
   template, and so are "an appropriate angular technique" and "an appropriate vue.js
-  technique"). One verbatim sentence alone covers 9,091 answers; 5,132 answers keep specific
+  technique"). One verbatim sentence alone covers 9,091 answers; 5,103 answers keep specific
   text after both strips. These answers are unusable as worked examples: asked about an Angular `Component`
   versus `Directive`, the answer says "the first approach generally emphasizes one set of
   trade-offs". The `TEMPLATES` check sees 799 rows because it matches whole-answer boilerplate
   only.
 - **A dedupe would remove roughly 700-1,900 rows, 1,898 at the documented default; a strict
-  threshold puts it as high as 3,356.** The figure depends on how often a slot-filled skeleton
-  must recur before it counts as a template, and the dependence is steep:
+  threshold puts it as high as 3,356.** Measured on the 23,954-row file, before the 29-row
+  dedupe; on the current file the answer scope at 0.98 gives 1,869. The figure depends on how
+  often a slot-filled skeleton must recur before it counts as a template, and the dependence is
+  steep:
 
   | Skeleton recurs at least | Fully templated | Specific text left | Clusters @0.98 | Reducible rows |
   |---:|---:|---:|---:|---:|
@@ -141,19 +143,27 @@ The answers are machine-generated and were not fact-checked.
   artefact.
   Reproduce the default with `python cluster_duplicates.py --only answers --slot-min-count 25`;
   `--slot-min-count 0` reproduces the 5,074 artefact.
-- **Only 29 rows can be deleted; the other ~1,870 duplicated answers sit on different questions.**
-  Grouping the 5,132 answers that still have specific text gives 364 body clusters at 0.98 over
-  2,262 rows. Removing every non-representative row is the 1,898 figure, but those rows mostly
-  answer *different* questions: "Why are first-party cookies and third-party cookies treated so
-  differently?" shares a body with "Why is not necessary to use entryComponents array every
-  time?" at a question cosine of 0.58. Deleting one would remove a question to fix an answer.
-  Scoped properly: 1,898 rows at answer scope, 379 when the row must share its representative's
-  subject, and **29** when the question must also match at 0.98 ("Tell me about Gwen?" vs
-  "Please tell me about Gwen?"). The remaining 1,869 rows are rewrite targets, not duplicates.
-  `python dedupe_answers.py` reports all three scopes and writes nothing; `--apply` removes the
-  chosen scope after keeping the last row of every subject x difficulty cell (138/138 held).
-  Question-level duplication on its own was measured separately at 457 rows / 179 clusters at
-  0.98, so 29 is the overlap of the two defects, not the size of either.
+- **29 rows were duplicates and are gone; the other 1,869 duplicated answers are rewrite
+  targets.** On the 23,954-row file the answer-body lens gave 1,898 rows at full scope, but those
+  rows mostly answer *different* questions: "Why are first-party cookies and third-party cookies
+  treated so differently?" shares a body with "Why is not necessary to use entryComponents array
+  every time?" at a question cosine of 0.58. Deleting them would remove questions to fix
+  answers. The 29 rows that were also question duplicates ("Tell me about Gwen?" vs "Please
+  tell me about Gwen?") were applied on 17 Nov, taking the dataset to **23,925 rows**; the
+  workbook was rebuilt and the audit passed. Re-running the answer lens on the new file gives
+  5,103 specific answers, 348 body clusters / 2,217 rows, and **0 further deletions** at question
+  scope (350 within-subject, 1,869 at full scope). Those 1,869 are the `--only-templated`
+  rewrite target, not duplicates.
+- **Question-level duplicates are 390 rows, not 457.** Clustering questions at 0.98 finds 174
+  groups covering 602 rows, but union-find chains unrelated questions: the largest group holds
+  29 TameMini-GS rows where "What was your role in TameMini-GS?" and "What are the real-world
+  applications of TameMini-GS?" are joined through intermediate links, worst pair 0.954. The
+  pass therefore deletes a row only when it is within 0.98 of the row being kept, which protects
+  38 of the 602 and leaves **390 deletable**: Education 102 -> 57, 3D Gaussian Splatting 97 -> 42,
+  Machine Translation (Gwen) 84 -> 26, Behavioral & Career 636 -> 600, Java 472 -> 442. Cells
+  stay 138/138 and the smallest cell stays at 1 row. The earlier 457 figure counted the chained
+  groups and so overstates; run `python dedupe_answers.py` for the current numbers, or
+  `--basis answer` for the answer-body lens.
 - **21,145 answers (88.3%) open with a sentence that appears verbatim in another answer.**
   There are about six stock openings, each covering roughly 2,500 rows ("Before choosing a
   direction I would make the trade-off explicit..."). The bodies after them differ - the

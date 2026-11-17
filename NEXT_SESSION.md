@@ -143,6 +143,23 @@ free-phrase slots ("in career & behavioral" appears verbatim with the subject in
 lowercase), which no simple normaliser catches. Conclusion: quote ~700-1,900, not a point
 estimate, and stop tuning the threshold - the remaining spread is the definition, not a bug.
 
+**17 Nov, dedupe applied + question basis:** the 29-row question-scope pass was applied, so the
+dataset is **23,925 rows**; workbook rebuilt, `audit_dataset.py` PASS, `clean_answers.py` clean,
+question index rebuilt (23,925 x 384) and the suite at 131 tests. The pass now has two bases.
+`--basis question` (default) clusters questions at 0.98 and deletes a row only when it is within
+0.98 of the row being kept: 174 chained groups cover 602 rows, 38 are protected as too far from
+the kept row, leaving **390 deletable** (Education 102 -> 57, 3D Gaussian Splatting 97 -> 42,
+Machine Translation 84 -> 26), cells 138/138. `--basis answer` keeps the old lens and now reports
+0 further deletions at question scope, 350 within-subject, 1,869 at full scope.
+The 457 question-duplicate figure was inflated by union-find chaining: the largest group put
+"What was your role in TameMini-GS?" and "What are the real-world applications of TameMini-GS?"
+in one 29-row cluster, worst pair 0.954. Star rule (compare to the kept row) is the fix: of the
+602 rows in groups, 174 are representatives, 390 are deletable and 38 are protected as too far
+from the kept row. The remaining groups are genuine paraphrase sets ("Explain the hybrid 3DGS
+optimization?" x4, "Where do you see yourself in 5 years?" x4). Not applied: the 390-row
+question pass is reported only, because it would delete rows whose question text differs
+noticeably in small subjects (3D Gaussian Splatting 97 -> 42, Machine Translation 84 -> 26).
+
 **17 Nov, dedupe pass:** new `dedupe_answers.py` (dry run by default) keeps one representative
 per 0.98 body cluster - longest specific body, ties by dataset order - and never touches
 templated rows. Building it corrected the premise behind the 1,898 figure: the duplicated bodies

@@ -40,3 +40,4 @@ run_*.log
 
 # quarantine state (per-question rejection counts)
 quarantine.json
+combined_dataset.backup.csv
