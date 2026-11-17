@@ -154,6 +154,48 @@ def templated_flags(rows: list[dict], min_count: int = 50) -> dict[int, bool]:
     }
 
 
+def select_targets(rows: list[dict], args) -> list[dict]:
+    """Class selector first, then the recurring-sentence filter, then the subject scope.
+
+    The templated class is wider than TEMPLATES: it covers any answer holding a sentence
+    that recurs 50+ times dataset-wide, so it has to start from every row rather than from
+    the boilerplate/duplicated set.
+    """
+    scoped = args.only_template or args.only_suspicious or args.only_duplicated
+    if args.only_templated and not scoped:
+        targets = list(rows)
+    else:
+        targets = pick_targets(rows, only_template=args.only_template,
+                               only_suspicious=args.only_suspicious,
+                               only_duplicated=args.only_duplicated)
+    if args.only_templated:
+        flags = templated_flags(rows)
+        targets = [t for t in targets if flags.get(id(t))]
+    if args.subject:
+        wanted = args.subject.strip().lower()
+        targets = [t for t in targets if (t.get("subject") or "").strip().lower() == wanted]
+    return targets
+
+
+def mode_label(args) -> str:
+    """One line naming what selected the targets, shared by the dry run and the exits."""
+    if args.only_suspicious:
+        label = "invented metrics / company names only"
+    elif args.only_duplicated:
+        label = "duplicated answers only"
+    elif args.only_template:
+        label = "boilerplate answers only"
+    elif args.only_templated:
+        label = "answers containing a recurring (template) sentence"
+    else:
+        label = "boilerplate + duplicated answers"
+    if args.only_templated and not label.startswith("answers containing"):
+        label += " | recurring sentence"
+    if args.subject:
+        label += f" | subject: {args.subject}"
+    return label
+
+
 def quarantine_path() -> Path:
     return BASE / "quarantine.json"
 
@@ -310,51 +352,52 @@ def call_llm(question: str, subject: str, difficulty: str,
     raise RuntimeError(last or "unknown error")
 
 
-def dry_run(rows: list[dict], targets: list[dict], only_template: bool = False,
-            only_suspicious: bool = False, only_duplicated: bool = False,
-            only_templated: bool = False, subject: str | None = None) -> None:
-    mode = ("invented metrics / company names only" if only_suspicious
-            else "duplicated answers only" if only_duplicated
-            else "boilerplate answers only" if only_template
-            else "answers containing a recurring (template) sentence" if only_templated
-            else "boilerplate + duplicated answers")
-    if subject:
-        mode += f" | subject: {subject}"
-    print(f"mode                 : {mode}")
+# Measured on this account's Groq runs, not estimated: ~845 total tokens per answer
+# (input + reasoning + output), and ~0.41 s per target with 2 workers.
+MEASURED_TOKENS_PER_ANSWER = 845
+MEASURED_SECONDS_PER_TARGET = 0.82
+
+
+def dry_run(rows: list[dict], targets: list[dict], args) -> None:
+    print(f"mode                 : {mode_label(args)}")
     print(f"dataset rows          : {len(rows):,}")
     print(f"target rows           : {len(targets):,} ({100 * len(targets) / len(rows):.1f}%)")
-    templated = sum(1 for r in targets if any(t in r["answer"] for t in TEMPLATES))
-    print(f"  boilerplate answers : {templated:,}")
-    if not only_template:
-        print(f"  duplicated answers  : {len(targets) - templated:,} (most also boilerplate)")
-    print("\nby subject (top 8):")
-    for s, c in Counter(r["subject"] for r in targets).most_common(8):
-        print(f"  {c:5d}  {s}")
-    in_tok = sum(len(r["question"]) // 4 + 120 for r in targets)
-    out_tok = len(targets) * 300
-    cost = in_tok / 1e6 * 0.15 + out_tok / 1e6 * 0.60
-    print(f"\nestimated tokens      : ~{in_tok:,} in / ~{out_tok:,} out")
-    print(f"estimated cost        : ~${cost:.2f} with gpt-4o-mini (input $0.15/M, output $0.60/M)")
-    # Measured on this account: ~845 total tokens per answer (input + reasoning + output),
-    # a day buys ~237 accepted answers. Output-only arithmetic understated this by ~3x.
-    per_answer = 845
-    print(f"free-tier days needed : ~{len(targets) * per_answer / 200_000:.1f} "
-          f"at 237 accepted answers/day (~{per_answer} tokens each)")
-    print(f"wall time             : ~{len(targets) / 8 / 60:.0f} min at 8 workers, ~1 req/s each")
+    print()
+    print("by subject (top 8):")
+    for name, count in Counter(r["subject"] for r in targets).most_common(8):
+        print(f"  {count:5d}  {name}")
 
-    print("\n--- sample prompt ---")
+    tokens = len(targets) * MEASURED_TOKENS_PER_ANSWER
+    seconds = len(targets) * MEASURED_SECONDS_PER_TARGET / max(args.workers, 1)
+    wall = f"~{seconds / 60:.0f} min" if seconds >= 120 else f"~{seconds:.0f} s"
+    print()
+    print(f"estimated tokens      : ~{tokens:,} (input + reasoning + output, measured)")
+    print(f"free-tier days        : ~{tokens / 200_000:.1f} at 200k tokens/day")
+    print(f"wall time             : {wall} at {args.workers} workers")
+
+    print()
+    print("--- sample prompt ---")
     r = targets[0]
     print(SYSTEM)
     print()
-    print(USER_TMPL.format(subject=r["subject"], difficulty=r["difficulty"], question=r["question"])[:400])
+    print(USER_TMPL.format(subject=r["subject"], difficulty=r["difficulty"],
+                           question=r["question"])[:400])
 
 
 def resume_hint(args) -> str:
-    """Command that continues this run, echoing the mode it was started with."""
-    flag = ("--only-suspicious " if args.only_suspicious
-            else "--only-duplicated " if args.only_duplicated
-            else "--only-template " if args.only_template else "")
-    return f"  python regenerate_answers.py {flag}--resume --out {args.out}"
+    """Command that continues this run, echoing the selectors it was started with."""
+    flags = ""
+    if args.only_suspicious:
+        flags += "--only-suspicious "
+    elif args.only_duplicated:
+        flags += "--only-duplicated "
+    elif args.only_template:
+        flags += "--only-template "
+    if args.only_templated:
+        flags += "--only-templated "
+    if args.subject:
+        flags += f'--subject "{args.subject}" '
+    return f"  python regenerate_answers.py {flags}--resume --out {args.out}"
 
 
 def main() -> None:
@@ -443,9 +486,8 @@ def main() -> None:
                 print(f"  {why}: {q[:70]}")
         return
 
-    targets = pick_targets(rows, only_template=args.only_template,
-                           only_suspicious=args.only_suspicious,
-                           only_duplicated=args.only_duplicated)
+    targets = select_targets(rows, args)
+
     quarantine = load_quarantine() if args.quarantine_after > 0 else {}
     quarantine_dirty = False
     if quarantine:
@@ -456,40 +498,12 @@ def main() -> None:
             targets = [t for t in targets if norm(t["question"]) not in blocked]
             print(f"quarantine: {len(held):,} row(s) skipped after "
                   f"{args.quarantine_after} failed attempt(s)")
-    if not targets:
-        if args.only_suspicious:
-            sys.exit("nothing to regenerate - no invented metrics or company names left")
-        if args.only_duplicated:
-            sys.exit("nothing to regenerate - no shared answer text left")
-        sys.exit("nothing to regenerate - no templated or duplicated answers found")
 
-    if args.only_templated:
-        if not (args.only_template or args.only_suspicious or args.only_duplicated):
-            targets = list(rows)      # the templated class is wider than TEMPLATES
-        flags = templated_flags(rows)
-        targets = [t for t in targets if flags.get(id(t))]
-    if args.subject:
-        wanted = args.subject.strip().lower()
-        targets = [t for t in targets if (t.get("subject") or "").strip().lower() == wanted]
-        if not targets:
-            sys.exit(f"no targets in subject {args.subject!r}")
-    if args.limit:
-        targets = targets[: args.limit]
-
-    if args.dry_run:
-        dry_run(rows, targets, args.only_template, args.only_suspicious,
-                args.only_duplicated, args.only_templated, args.subject)
-        return
-
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        sys.exit("FATAL: set OPENAI_API_KEY (never hardcode the key in this file)")
-    base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-
+    # Resume before --limit: a pilot of N means N attempts still to make, not N targets
+    # minus the ones an earlier run already finished.
     out_path = BASE / args.out
-    done_q: set[str] = set()
     if args.resume and out_path.exists():
+        done_q: set[str] = set()
         with open(out_path, encoding="utf-8", newline="") as fh:
             for r in csv.DictReader(fh):
                 if r.get("status", "") == "ok":
@@ -498,14 +512,25 @@ def main() -> None:
         targets = [t for t in targets if norm(t["question"]) not in done_q]
         print(f"resume: {before - len(targets):,} already done, {len(targets):,} left")
 
+    if args.limit:
+        targets = targets[: args.limit]
+
+    if not targets:
+        where = f" in subject {args.subject!r}" if args.subject else ""
+        sys.exit(f"nothing to regenerate - {mode_label(args)} matched no rows{where}")
+
+    if args.dry_run:
+        dry_run(rows, targets, args)
+        return
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        sys.exit("FATAL: set OPENAI_API_KEY (never hardcode the key in this file)")
+    base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
     # --max-requests bounds API calls, retries included, so the loop counts them rather
     # than truncating the target list here.
-    if not targets:
-        if args.only_suspicious:
-            print("nothing to regenerate - no invented metrics or company names left")
-        else:
-            print("nothing to regenerate - no templated or duplicated answers found")
-        return
     print(f"regenerating {len(targets):,} answers with {model} via {base_url} ({args.workers} workers)")
 
     seen: set[str] = set()

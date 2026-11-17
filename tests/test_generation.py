@@ -396,7 +396,7 @@ class TestResumeHint:
     def _args(**kw):
         import types
         base = dict(only_suspicious=False, only_duplicated=False, only_template=False,
-                    out="answers_x.csv")
+                    only_templated=False, subject=None, out="answers_x.csv")
         base.update(kw)
         return types.SimpleNamespace(**base)
 
@@ -968,3 +968,75 @@ def test_limit_applies_after_the_templated_and_subject_filters(tmp_path, monkeyp
                                       "--subject", "Java", "--limit", "1", "--dry-run"])
     ra.main()
     assert "target rows           : 1" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
+# Interaction order: quarantine -> resume -> limit
+# --------------------------------------------------------------------------- #
+def test_quarantine_is_applied_before_the_limit(tmp_path, monkeypatch, capsys):
+    """A held row must not spend one of the pilot's N slots: --limit 1 still attempts one."""
+    _dup_dataset(tmp_path)
+    (tmp_path / "quarantine.json").write_text(json.dumps({
+        "how do you isolate a failing write?": {"n": 2, "reason": "too short"},
+    }), encoding="utf-8")
+    calls: list[str] = []
+
+    def fake(req, timeout=None):
+        calls.append(json.loads(req.data)["messages"][1]["content"])
+        return completion(GOOD_ANSWER)
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    rows, out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "1"))
+
+    assert len(calls) == 1, f"pilot slot was wasted on a held row: {len(calls)} calls"
+    assert "bound queue lag" in calls[0]
+    assert len(rows) == 1
+    assert "quarantine: 1 row(s) skipped" in out
+
+
+def test_resume_is_applied_before_the_limit(tmp_path, monkeypatch, capsys):
+    """--resume --limit 1 means one new attempt, not 'limit, then drop the finished ones'."""
+    _dup_dataset(tmp_path)
+    (tmp_path / "out.csv").write_text(
+        "question,subject,difficulty,old_answer,new_answer,status\n"
+        "How do you isolate a failing write?,Java,Easy,shared old answer,"
+        f"old answer,ok\n",
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    def fake(req, timeout=None):
+        calls.append(json.loads(req.data)["messages"][1]["content"])
+        return completion(GOOD_ANSWER)
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    rows, out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "1", "--resume"))
+
+    assert len(calls) == 1, f"expected the remaining row, got {len(calls)} calls"
+    assert "bound queue lag" in calls[0]
+    assert rows[-1]["question"] == "How do you bound queue lag?"
+    assert "resume: 1 already done, 1 left" in out
+
+
+def test_resume_hint_reproduces_the_scoped_run():
+    import types
+    args = types.SimpleNamespace(only_suspicious=False, only_duplicated=False,
+                                 only_template=False, only_templated=True,
+                                 subject="Cybersecurity", out="answers.csv")
+    hint = ra.resume_hint(args)
+    assert "--only-templated" in hint
+    assert '--subject "Cybersecurity"' in hint
+    assert "--resume" in hint
+
+
+def test_dry_run_does_not_quote_a_price_for_a_free_provider(tmp_path, monkeypatch, capsys):
+    _subject_dataset(tmp_path)
+    monkeypatch.setattr(ra, "BASE", tmp_path)
+    monkeypatch.setattr(ra, "SRC", tmp_path / "combined_dataset.csv")
+    monkeypatch.setattr(sys, "argv", ["regenerate_answers.py", "--only-template",
+                                      "--dry-run", "--workers", "2"])
+    ra.main()
+    out = capsys.readouterr().out
+    assert "estimated cost" not in out, "prices gpt-4o-mini while the runs use a free tier"
+    assert "free-tier days" in out
+    assert "at 2 workers" in out
