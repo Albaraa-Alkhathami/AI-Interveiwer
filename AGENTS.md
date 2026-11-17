@@ -103,7 +103,7 @@ Run this after **any** dataset or script change:
 - `data_flag` carries `limited data (<20 questions)` for thin subjects. Do not invent other
   values; add new columns only with the user's agreement, since the five-column schema is part
   of the brief.
-- 1,250 rows still share their answer text with another row — a known defect, not intent.
+- 1,086 rows still share their answer text with another row — a known defect, not intent.
 - A figure or company name **supplied by the question** is context, not invention. Both
   `is_suspicious()` and `audit_dataset.py` ignore matches the question already contains; without
   that, rewrite targets loop forever because the prompt asks for what the guard bans.

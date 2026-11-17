@@ -100,13 +100,13 @@ The 5 original gaps were closed with generated questions; Machine Translation (G
 The answers are machine-generated and were not fact-checked.
 
 - No ground-truth answer, rubric or human rating exists anywhere in the file.
-- **870 answers (3.6%) are still boilerplate** — the templated "A good answer should address the requirements…" / "X can be understood as a core concept…" text. These are being replaced in batches of ~220 per day, limited by the free-tier token budget. Until they are gone, any answer-length or answer-quality statistic is contaminated by them.
+- **799 answers (3.3%) are still boilerplate** — the templated "A good answer should address the requirements…" / "X can be understood as a core concept…" text. These are being replaced in batches of ~220 per day, limited by the free-tier token budget. Until they are gone, any answer-length or answer-quality statistic is contaminated by them.
 - A mechanical cleanup (`clean_answers.py`) removed assistant chatter ("Let me know if you need anything else…") from 553 answers, leading filler ("Certainly.", "Sure.") and stray markdown bold. 28 answers still contain mid-text chatter and 9 begin with filler, because neither could be removed without damaging the sentence.
-- **89 answers are under 100 characters** and 34 were too thin to clean; they are placeholders rather than explanations.
+- **74 answers are under 100 characters** and 34 were too thin to clean; they are placeholders rather than explanations.
 - 22,415 answers (93.6%) are written in first person and contain **invented personal and project details** (named publications, employer specifics). These are plausible-sounding but fabricated and must not be presented as real facts.
 - A measurable subset of those: **10 answers state a numeric credential or tenure** ("I scored 860 on the TOEFL", "N years of experience"). `audit_dataset.py` reports these as a warning rather than a blocker, because a bare number with no unit cannot be judged with confidence and some questions supply it themselves. Treat the 10 as a floor, not a total: prose claims without a digit are invisible to the check.
 - **108 answers stated verifiable-looking specifics** — a metric (`4.3x`, `60%`, `40 ms`) or a real company name (Google, Netflix…). These were the most misleading rows in the file. As of 15 November 2026, **100 have been rewritten** to describe mechanism and trade-off instead of results, and **8 were kept unchanged** because the question itself supplies the term ("How is Magento connected with Google Analytics?" must be allowed to answer *Google Analytics*). A measured re-audit finds **0 remaining**. The guard in `regenerate_answers.py --only-suspicious` rejects a rewrite that still contains a figure the question did not supply; both it and `audit_dataset.py` are question-aware.
-- **1,250 rows share their answer text with another row** (254 distinct answer texts), and about 1,240 are rewrite targets. `--apply` refuses any row whose rewrite invents a figure, so run files made before a guard existed cannot leak one in. Where two different questions were answered identically, the answer is generic rather than specific. `regenerate_answers.py` without `--only-template` targets these.
+- **1,086 rows share their answer text with another row** (167 distinct answer texts), and 1,253 are rewrite targets. `--apply` refuses any row whose rewrite invents a figure, so run files made before a guard existed cannot leak one in. Where two different questions were answered identically, the answer is generic rather than specific. `regenerate_answers.py` without `--only-template` targets these.
 
 **Impact:** the file is suitable as a question bank and as style-consistent generation data; it is **not** suitable as a factual reference, a source of ground truth, or evidence of anyone's real experience.
 
@@ -154,6 +154,6 @@ The file carries no information about:
 
 ### Reporting checklist
 
-When quoting this dataset, state at minimum: row count (23,954), that answers are machine-generated and unverified, that one answer per question is retained, that 870 answers (3.6%) are still templated, that 12 subjects hold 85.4% of rows, and that 2 subjects carry the `limited data` flag.
+When quoting this dataset, state at minimum: row count (23,954), that answers are machine-generated and unverified, that one answer per question is retained, that 799 answers (3.3%) are still templated, that 12 subjects hold 85.4% of rows, and that 2 subjects carry the `limited data` flag.
 
 *Lineage: 28,770 source rows → −309 exact duplicates → 23,839 unique questions → +11 authored rows = 23,850 → +104 generated questions = 23,954. Original preserved at `combined_dataset_original_backup.csv`.*

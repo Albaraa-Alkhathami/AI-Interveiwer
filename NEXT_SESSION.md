@@ -19,10 +19,10 @@ The section numbers are kept so older notes still refer to the same work.
 | Coverage | 138/138 cells (Easy/Medium/Hard) |
 | Subjects under 20 questions | 2 (General Computer Science 12, Version Control 17) |
 | Invented specifics (metrics / companies) | **0** (was 85) |
-| Boilerplate answers | 870 (was 1,058) |
-| Duplicated answer texts | 254 distinct texts across 1,250 rows; ~1,240 are rewrite targets |
+| Boilerplate answers | 799 (was 1,058) |
+| Duplicated answer texts | 167 distinct texts across 1,086 extra rows; 1,253 rewrite targets |
 | Default-mode targets | 2,015 (8.4%) |
-| Answers under 100 characters | 89 |
+| Answers under 100 characters | 74 |
 | Assistant chatter / filler openers | 32 / 12 |
 | Markdown leakage / typographic punctuation | 3 / 0 |
 
@@ -56,7 +56,7 @@ charged. Resume tomorrow with the same command; `--resume` skips the 188 already
 
 | Target | Rows | Why it matters |
 |---|---:|---|
-| Boilerplate | 870 | "A good answer should address the requirements…" — visible filler |
+| Boilerplate | 799 | "A good answer should address the requirements…" — visible filler |
 | Under 100 characters | 89 | Placeholders, not explanations |
 | Mid-text chatter | 32 | "Feel free to ask…" surviving the mechanical pass |
 | Code fences | 4 | ```` ``` ```` blocks (Vuex, React forwardRef, useEffect, styled-components) — need a prose rewrite, not a mechanical strip |
@@ -84,6 +84,12 @@ python regenerate_answers.py --only-duplicated --resume --workers 2 --max-reques
 budget is available — on 16 Nov the probe succeeded and the very next run died after 4 answers.
 Groq exposes only the per-minute remainder in headers, so the only honest signal is the first
 real run; do not announce "quota is back" on a probe.
+
+**17 Nov, first full budget:** 200 requests (169 accepted) on shared answers, then 76 more on
+boilerplate before `429 ... tokens per day`. So the documented 200k daily cap is real and equals
+roughly **270 answer rewrites per day**. Shared answers 1,250 → 1,086 extra rows (167 texts),
+boilerplate 870 → 799, thin answers 89 → 74. Chat-bubble chatter and filler also fell as a side
+effect (32 → 27, 12 → 10).
 
 **16 Nov, third attempt (valid key on disk):** 15 accepted, 1 rejected, then `429 ... tokens per
    day` — the cap itself, confirmed by the now-untruncated error text. The key was valid; the
