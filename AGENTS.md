@@ -62,7 +62,7 @@ enforces the mechanical ones:
 - **A corrective retry must beat the alternative to be worth its call.** With a fixed call
   budget, retrying a rejection (rate ~15%) spends a call that would otherwise have gone to a
   fresh target, which succeeds 85% of the time. The retry therefore pays only if it recovers
-  more than ~85% of rejections; below that, `--no-retry` yields more accepted answers per day.
+  more than ~85% of rejections; below that, leaving `--retry` off yields more accepted answers.
   Every run prints `corrective retries: N spent, M recovered`, so the two modes can be compared
   on the same dataset instead of argued about.
 - **Retry only what a prompt can fix.** `RETRYABLE` covers invented specifics, banned phrasing,

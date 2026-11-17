@@ -737,3 +737,39 @@ def test_retryable_reasons_are_the_ones_a_prompt_can_fix():
     assert ra.is_retryable("too short")
     assert ra.is_retryable("contains banned phrase: 'certainly!'")
     assert not ra.is_retryable("duplicate of another generated answer")
+
+
+def test_quota_stop_without_retry_records_every_in_flight_row(tmp_path, monkeypatch, capsys):
+    """The default path: retries off, and the cap fires on the very first call.
+
+    The remaining targets are already submitted, so they were paid for. Every one must
+    appear in the run file — as `error:` for the capped call and `ok` for the rest —
+    instead of the drain exiting with rows still unknown.
+    """
+    import csv as _csv
+    import threading
+
+    path = tmp_path / "combined_dataset.csv"
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        w = _csv.writer(fh)
+        w.writerow(["prompt", "question", "answer", "subject", "difficulty", "data_flag"])
+        for i in range(1, 5):
+            w.writerow(["p", f"Question {i} about failure isolation?", "shared old answer",
+                        "Java", "Easy", ""])
+
+    def fake(req, timeout=None):
+        user = json.loads(req.data)["messages"][1]["content"]
+        if "Question 1 about" in user:
+            raise http_error(429, '{"error":{"message":"Rate limit reached on tokens per day '
+                                  '(TPD): Limit 200000, Used 200000."}}')
+        threading.Event().wait(0.2)               # the rest are still in flight at the stop
+        return completion(GOOD_ANSWER + f" Ref {abs(hash(user)) % 9973}.")
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    rows, out = _run_regenerate(tmp_path, monkeypatch, capsys,
+                                ("--workers", "2", "--max-requests", "10"))
+
+    assert len(rows) == 4, f"rows lost after the quota stop: {len(rows)}"
+    assert sorted(r["status"].split(":")[0] for r in rows) == ["error", "ok", "ok", "ok"]
+    assert "quota hit after" in out
+    assert "retried=" not in out, "retry counters should stay quiet when retries are off"

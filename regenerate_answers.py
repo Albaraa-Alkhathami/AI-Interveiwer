@@ -320,7 +320,6 @@ def main() -> None:
     ap.add_argument("--retry", action="store_true",
                     help="opt in to one corrective second call per guard rejection "
                          "(only worth it if it recovers more than ~85%% of them)")
-    ap.add_argument("--no-retry", action="store_true", help="accepted for compatibility")
     ap.add_argument("--resume", action="store_true",
                     help="skip questions already present in --out (continue a stopped run)")
     ap.add_argument("--apply", metavar="FILE", help="merge a reviewed output CSV into the dataset")
@@ -415,7 +414,7 @@ def main() -> None:
     print(f"regenerating {len(targets):,} answers with {model} via {base_url} ({args.workers} workers)")
 
     seen: set[str] = set()
-    done = ok = rejected = failed = 0
+    ok = rejected = failed = 0
     retried = recovered = 0
     request_budget = args.max_requests or len(targets)
     requests_used = 0
@@ -424,6 +423,11 @@ def main() -> None:
         writer = csv.DictWriter(fh, fieldnames=OUT_COLS)
         if mode == "w":
             writer.writeheader()
+
+        def record(row: dict, new: str, status: str) -> None:
+            writer.writerow({**{k: row[k] for k in ("question", "subject", "difficulty")},
+                             "old_answer": row["answer"], "new_answer": new,
+                             "status": status})
         # Submit in small chunks rather than all at once: once the provider reports a daily
         # cap, every queued request would still fire against a dead budget. Chunking bounds
         # the waste to one round of workers.
@@ -434,10 +438,10 @@ def main() -> None:
 
             inflight: set = set()
 
-            def submit(row, extra=""):
+            def submit(row, extra="", prior=None):
                 fut = pool.submit(call_llm, row["question"], row["subject"], row["difficulty"],
                                   api_key, base_url, model, extra=extra)
-                meta[fut] = (row, None)
+                meta[fut] = (row, prior)
                 return fut
 
             # Drain even after STOP is set: requests already in flight were paid for, and
@@ -464,9 +468,7 @@ def main() -> None:
                         # A dead call still gets a row: the target stays visible as failed
                         # instead of vanishing, and the rest of the pool keeps draining.
                         failed += 1
-                        writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
-                                         "old_answer": r["answer"], "new_answer": "",
-                                         "status": f"error: {e}"})
+                        record(r, "", f"error: {e}")
                         continue
                     if prior is None:
                         reason = validate(new, seen)
@@ -474,7 +476,7 @@ def main() -> None:
                             reason = "still contains a metric or company name"
                         # Only failures a better prompt can fix, and only within budget.
                         retry_now = (reason and args.retry and is_retryable(reason)
-                                     and not args.no_retry and not STOP.is_set()
+                                     and not STOP.is_set()
                                      and requests_used < request_budget)
                         if retry_now:
                             # Submit the corrective retry rather than calling it here: done
@@ -482,11 +484,8 @@ def main() -> None:
                             # (or its 429 wait) and every other worker sits idle meanwhile.
                             retried += 1
                             requests_used += 1
-                            fut2 = pool.submit(call_llm, r["question"], r["subject"],
-                                               r["difficulty"], api_key, base_url, model,
-                                               extra=correction_for(reason, new, r["question"]))
-                            meta[fut2] = (r, reason)
-                            inflight.add(fut2)
+                            inflight.add(submit(r, correction_for(reason, new, r["question"]),
+                                                prior=reason))
                             continue
                     else:
                         again = validate(new, seen)
@@ -499,20 +498,18 @@ def main() -> None:
                             recovered += 1
                     if reason:
                         rejected += 1
-                        writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
-                                         "old_answer": r["answer"], "new_answer": new,
-                                         "status": f"rejected: {reason}"})
+                        record(r, new, f"rejected: {reason}")
                     else:
                         seen.add(norm(new))
                         ok += 1
-                        writer.writerow({**{k: r[k] for k in ("question", "subject", "difficulty")},
-                                         "old_answer": r["answer"], "new_answer": new,
-                                         "status": "ok"})
+                        record(r, new, "ok")
                     written = ok + rejected + failed
                     if written % 100 == 0 or written == len(targets):
                         fh.flush()
-                        print(f"  {written:,}/{len(targets):,}  ok={ok:,} rejected={rejected:,} "
-                              f"failed={failed:,} retried={retried:,} recovered={recovered:,}")
+                        retry_note = (f" retried={retried:,} recovered={recovered:,}"
+                                      if args.retry else "")
+                        print(f"  {written:,}/{len(targets):,}  ok={ok:,} "
+                              f"rejected={rejected:,} failed={failed:,}{retry_note}")
             if STOP.is_set():
                 fh.flush()
                 print(f"  quota hit after {requests_used:,} request(s) - "

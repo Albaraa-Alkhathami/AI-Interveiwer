@@ -103,6 +103,13 @@ retry starts, parametrised over 2 and 4 workers so the queue depth cannot matter
 immediately when the retry is made synchronous again and passes on the pooled loop. A call that dies still writes its row, and the loop
 drains in-flight work after a quota stop instead of abandoning the chunk.
 
+**17 Nov, default-path cleanup:** the loop no longer carries the dead `--no-retry` flag or an
+unused counter, the four near-identical row writes became one `record()` helper, and the
+progress line prints retry counters only when `--retry` is on. A new test pins the default
+path: a quota stop on the first call still writes all four in-flight rows (1 `error`, 3 `ok`).
+It passes on the old chunk loop too, because that loop always drained its own chunk; it fails
+if the drain is removed, which is the property it exists to hold.
+
 **17 Nov, after the cap:** a 4-token probe returned 200 with 7,924 tokens "available", so a run
 was started; its first real answer failed with `per day` and the run stopped after 4 requests
 (1 ok). The cap had not reset — the probe had been served on residual budget. Resume with
