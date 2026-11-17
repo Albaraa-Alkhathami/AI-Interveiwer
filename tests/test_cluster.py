@@ -77,3 +77,35 @@ def test_a_unique_answer_is_untouched():
     bodies, info = cd.strip_template_sentences(answers, min_count=2)
     assert bodies == answers
     assert info["rows_fully_templated"] == 0
+
+
+def test_slot_variants_share_one_sentence_key():
+    a = "With Kafka Streams already in place, I would keep the stack we have."
+    b = "With Apache Flink already in place, I would keep the stack we have."
+    assert cd.sentence_key(a) != cd.sentence_key(b)
+    assert cd.sentence_key(a, slot=True) == cd.sentence_key(b, slot=True)
+
+
+def test_step_numbers_are_a_slot_not_content():
+    a = "(2) agree the success measure and the stop conditions up front."
+    b = "(3) agree the success measure and the stop conditions up front."
+    assert cd.sentence_key(a, slot=True) == cd.sentence_key(b, slot=True)
+
+
+def test_slot_key_keeps_different_advice_apart():
+    a = "I would shard the index by tenant so writes stay local."
+    b = "A mutex guards shared state when two threads write at once."
+    assert cd.sentence_key(a, slot=True) != cd.sentence_key(b, slot=True)
+
+
+def test_slot_min_count_makes_slot_filled_rows_fully_templated():
+    stock = ("With {} already in place, that means working with the stack we have "
+             "before proposing anything new.")
+    texts = [stock.format(name) for name in ("Kafka", "Flink", "RabbitMQ", "SQS", "Redis")]
+
+    _, verbatim_only = cd.strip_template_sentences(texts, 50)
+    assert verbatim_only["rows_fully_templated"] == 0, "each variant is unique verbatim"
+
+    _, slot_aware = cd.strip_template_sentences(texts, 50, slot_min_count=2)
+    assert slot_aware["slot_sentences"] >= 1
+    assert slot_aware["rows_fully_templated"] == len(texts)

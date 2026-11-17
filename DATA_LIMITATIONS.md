@@ -100,18 +100,25 @@ The 5 original gaps were closed with generated questions; Machine Translation (G
 The answers are machine-generated and were not fact-checked.
 
 - No ground-truth answer, rubric or human rating exists anywhere in the file.
-- **14,692 answers (61.3%) contain no unique sentence at all** - every sentence also appears
-  in dozens or hundreds of other answers. 300 sentences recur at least 50 times, one of them
-  in 9,091 answers; 7,106 further answers mix stock sentences with specific text, and only
-  2,156 are free of them. These answers are therefore unusable as worked examples: asked about
-  an Angular `Component` versus `Directive`, the answer says "the first approach generally
-  emphasizes one set of trade-offs". The `TEMPLATES` check sees 799 rows because it matches
-  whole-answer boilerplate only.
-- **Even the 'specific' remaining text is templated with slots filled in.** A 0.98-cosine
-  sample shows clusters of 34-54 rows repeating one sentence with a stack name or deadline
-  substituted: "With Kafka Streams / Apache Kafka / Apache Flink already in place, that means
-  working with the stack we have". So the 5,074 reducible figure is not 5,074 paraphrases of
-  genuinely distinct answers; it is the same skeleton counted per slot value.
+- **18,619 answers (77.7%) contain no unique sentence at all** - every sentence also appears
+  in dozens or hundreds of other answers. A sentence counts as a template when it recurs
+  verbatim 50+ times (300 such sentences) or when its slot-filled skeleton recurs 25+ times
+  (321 skeletons: the generator swaps a step number, a stack name or a figure, so "(2) agree
+  the success measure..." and "(3) agree the success measure..." are one template). One
+  verbatim sentence alone covers 9,091 answers; 5,335 answers keep specific text after both
+  strips. These answers are unusable as worked examples: asked about an Angular `Component`
+  versus `Directive`, the answer says "the first approach generally emphasizes one set of
+  trade-offs". The `TEMPLATES` check sees 799 rows because it matches whole-answer boilerplate
+  only.
+- **A dedupe would remove 2,063 rows, not 5,074.** The 5,335 answers with specific text left
+  still cluster into 390 groups at cosine 0.98 (2,453 rows), so 2,063 rows are near-duplicates
+  of another row and 3,272 are genuinely distinct. The earlier 5,074 figure was inflated by
+  reading slot-filled sentences as specific text and counting one skeleton once per slot
+  value. At 0.95 it is 392 groups / 2,301 rows, which over-merges same-topic prose.
+  Reproduce with `python cluster_duplicates.py --only answers --slot-min-count 25`.
+  Some slots still escape normalisation when the generator inserts them lowercase ("an
+  appropriate angular technique"), so 2,063 is what a dedupe removes from the text as it
+  stands, not a ceiling on how many rows are templated.
 - **21,145 answers (88.3%) open with a sentence that appears verbatim in another answer.**
   There are about six stock openings, each covering roughly 2,500 rows ("Before choosing a
   direction I would make the trade-off explicit..."). The bodies after them differ - the

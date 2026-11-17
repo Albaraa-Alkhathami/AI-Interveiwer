@@ -38,6 +38,18 @@ import search_app as sa  # noqa: E402
 OPENING = re.compile(r"^\s*([^.!?]{20,240}[.!?])\s*")
 MIN_BODY = 60  # a stripped answer below this has no comparable body left
 
+# The generator fills slots inside its templates: a step number ("(2) ..." vs "(3) ..."), a
+# stack name ("With Kafka Streams already in place" vs "With Apache Kafka ..."), a figure.
+# Counting those variants as one sentence is what separates a template from a specific line.
+SLOT = re.compile(
+    r"(?<!^)\b(?:[A-Z][A-Za-z0-9.+#/\-]*(?:\s+[A-Z][A-Za-z0-9.+#/\-]*)*|\d+(?:[.,]\d+)*%?)\b"
+)
+
+
+def sentence_key(sentence: str, slot: bool = False) -> str:
+    """Casefolded sentence; with slot=True, capitalised names and numbers become <x>."""
+    return (SLOT.sub("<x>", sentence) if slot else sentence).casefold()
+
 
 def split_opening(text: str) -> tuple[str | None, str]:
     match = OPENING.match(text)
@@ -64,21 +76,36 @@ def opening_stats(texts: list[str], min_count: int) -> dict:
 SENTENCE = re.compile(r"(?<=[.!?])\s+")
 
 
-def strip_template_sentences(texts: list[str], min_count: int) -> tuple[list[str], dict]:
+def strip_template_sentences(texts: list[str], min_count: int,
+                             slot_min_count: int = 0) -> tuple[list[str], dict]:
     """Drop every sentence that recurs across the dataset, wherever it sits.
 
     Stripping only the leading sentence was not enough: the template continues into the
     body ("(3) add buffering and explicit backpressure..." is shared by 1,337 answers), so a
     front-to-back strip merely walks into the next stock sentence. Removing all recurring
     sentences leaves the part that is actually specific to the question.
+
+    slot_min_count > 0 also treats slot-filled variants as the same sentence: "(2) agree the
+    success measure..." and "(3) agree the success measure..." collapse, as do "With Kafka
+    Streams already in place" and "With Apache Kafka already in place". Without that, one
+    template is counted once per step number and per stack name, and the row it fills looks
+    specific when it is not.
     """
     per_text = [SENTENCE.split(" ".join(t.split())) for t in texts]
     counts = Counter(s.casefold() for sents in per_text for s in sents if len(s) > 20)
     stock = {s for s, n in counts.items() if n >= min_count}
+    slot_counts = Counter(sentence_key(s, slot=True)
+                          for sents in per_text for s in sents if len(s) > 20)
+    slots = {k for k, n in slot_counts.items() if n >= slot_min_count} if slot_min_count else set()
+
+    def is_template(sentence: str) -> bool:
+        if len(sentence) <= 20:
+            return False
+        return sentence.casefold() in stock or sentence_key(sentence, slot=True) in slots
 
     bodies, keep, removed = [], [], 0
     for i, (text, sents) in enumerate(zip(texts, per_text)):
-        kept = [s for s in sents if not (len(s) > 20 and s.casefold() in stock)]
+        kept = [s for s in sents if not is_template(s)]
         body = " ".join(kept).strip()
         removed += max(0, len(text) - len(body))
         if len(body) >= MIN_BODY:
@@ -90,6 +117,7 @@ def strip_template_sentences(texts: list[str], min_count: int) -> tuple[list[str
             bodies.append(text)
     return bodies, {
         "stock_sentences": len(stock),
+        "slot_sentences": len(slots),
         "rows_with_specific_text": len(keep),
         "rows_fully_templated": len(texts) - len(keep),
         "chars_removed": removed,
@@ -97,7 +125,8 @@ def strip_template_sentences(texts: list[str], min_count: int) -> tuple[list[str
     }
 
 
-def body_vectors(bodies: list[str], prefix: int, min_count: int) -> tuple[np.ndarray, str]:
+def body_vectors(bodies: list[str], prefix: int, min_count: int,
+                 slot_min_count: int = 0) -> tuple[np.ndarray, str]:
     """Embed a body prefix, cached by content hash.
 
     A near-duplicate answer is recognisable from its opening once the shared template has
@@ -106,7 +135,8 @@ def body_vectors(bodies: list[str], prefix: int, min_count: int) -> tuple[np.nda
     texts = [" ".join(b.split())[:prefix] for b in bodies]
     sha = hashlib.sha1("\n".join(texts).encode("utf-8")).hexdigest()
     slug = sa.MODEL_NAME.replace("/", "_")
-    npy = sa.CACHE_DIR / f"bodies_p{prefix}_m{min_count}_{slug}.npy"
+    slot_part = f"_s{slot_min_count}" if slot_min_count else ""
+    npy = sa.CACHE_DIR / f"bodies_p{prefix}_m{min_count}{slot_part}_{slug}.npy"
     meta = npy.with_suffix(".json")
     if npy.exists() and meta.exists():
         recorded = json.loads(meta.read_text(encoding="utf-8"))
@@ -191,6 +221,9 @@ def main() -> int:
     ap.add_argument("--answer-prefix", type=int, default=200)
     ap.add_argument("--opening-min-count", type=int, default=50,
                     help="a leading sentence repeated at least this often is a template")
+    ap.add_argument("--slot-min-count", type=int, default=0,
+                    help="also treat slot-filled variants as one template when the skeleton "
+                         "recurs this often (25 finds the generated ones; 0 disables)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -216,12 +249,15 @@ def main() -> int:
         results += summarise("questions", qtexts, qv, thresholds)
 
     if args.only in (None, "answers"):
-        bodies, strip_info = strip_template_sentences(answers, args.opening_min_count)
+        bodies, strip_info = strip_template_sentences(answers, args.opening_min_count,
+                                                      args.slot_min_count)
         print(f"answers    template sentences={strip_info['stock_sentences']:,} "
+              f"slot-filled={strip_info['slot_sentences']:,} "
               f"rows_with_specific_text={strip_info['rows_with_specific_text']:,} "
               f"rows_fully_templated={strip_info['rows_fully_templated']:,}")
         specific = [bodies[i] for i in strip_info["keep"]]
-        av, source = body_vectors(specific, args.answer_prefix, args.opening_min_count)
+        av, source = body_vectors(specific, args.answer_prefix, args.opening_min_count,
+                                  args.slot_min_count)
         print(f"answers: body vectors from {source} for {len(specific):,} specific rows "
               f"(prefix {args.answer_prefix} chars)")
         results += summarise("answers", specific, av, thresholds)

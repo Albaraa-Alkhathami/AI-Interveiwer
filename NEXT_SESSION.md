@@ -103,6 +103,18 @@ retry starts, parametrised over 2 and 4 workers so the queue depth cannot matter
 immediately when the retry is made synchronous again and passes on the pooled loop. A call that dies still writes its row, and the loop
 drains in-flight work after a quota stop instead of abandoning the chunk.
 
+**17 Nov, slot-aware recount:** treating slot-filled sentences as templates lowers the dedupe
+figure from 5,074 to **2,063 rows** and raises fully-templated answers from 14,708 to 18,619
+(77.7%). The slot is real: `sentence_key(..., slot=True)` strips capitalised names and numbers,
+so "With Kafka Streams already in place" and "With Apache Flink already in place" become one
+skeleton (1,677 + 385 rows), and "(2)" vs "(3) agree the success measure" collapse too. 300
+verbatim templates plus 321 slot skeletons cover 18,619 answers; the 5,335 rows with text left
+cluster into 390 groups at 0.98 = 2,063 reducible (392 / 2,301 at 0.95). The 3,911 rows that
+moved out of the specific set are ordinary templates whose variants had been split by step
+number or capitalisation. Flag: `cluster_duplicates.py --slot-min-count 25` (0 disables, which
+reproduces the old 5,074). Not yet normalised: slots inserted lowercase ("an appropriate
+angular technique"), so more rows are probably templated than this count admits.
+
 **17 Nov, repair plan (not started):** the templating is concentrated - the 12 industry
 subjects (Cybersecurity, AI & Data Platforms, HealthTech, Drones, E-Commerce, FinTech,
 Gaming, DefenseTech, AdTech, Logistics, SaaS, FoodTech) hold ~20,300 of the ~21,800 repair
@@ -122,10 +134,11 @@ question paraphrase duplication is small - 1,253 exact-shared rows against 241 c
 prefix originally measured the template, not duplication: only 3,399 distinct vectors existed
 for 23,954 answers. Measured properly, the template is far bigger than the 799 boilerplate
 rows: 300 sentences recur at least 50 times, 20,783 answers open with one of them, and
-**14,692 answers (61.3%) contain no unique sentence at all** - 7,106 mix stock and specific
+14,692 answers (61.3%) contain no unique sentence at all - 7,106 mix stock and specific
 text, 2,156 are clean. Comparing only the 9,246 answers with specific text left gives 705
 clusters / 5,074 reducible rows at cosine 0.98 (519 / 5,708 at 0.95, which over-merges
-same-topic prose). Quarantine measured on seven past run files: 65 distinct questions
+same-topic prose). These figures count verbatim templates only and are superseded by the
+slot-aware recount below (2,063 reducible, 18,619 fully templated). Quarantine measured on seven past run files: 65 distinct questions
 rejected, 9 rejected twice or more, 11 calls that would have been skipped at the default
 threshold of 2 - small now, but those rows recur every time they are targeted.
 
