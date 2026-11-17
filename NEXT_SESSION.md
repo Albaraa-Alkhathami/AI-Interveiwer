@@ -121,7 +121,27 @@ cluster into 390 groups at 0.98 = 2,063 reducible (392 / 2,301 at 0.95). The 3,9
 moved out of the specific set are ordinary templates whose variants had been split by step
 number or capitalisation. Flag: `cluster_duplicates.py --slot-min-count 25` (0 disables, which
 reproduces the old 5,074). Not yet normalised: slots inserted lowercase ("an appropriate
-angular technique"), so more rows are probably templated than this count admits.
+angular technique"), so more rows are probably templated than this count admits. The subject
+slot below lowers these figures by ~8%; its numbers supersede this paragraph.
+
+**17 Nov, subject slots:** `sentence_key(..., subject=...)` now replaces the row's own subject
+with `<s>` in any casing before skeletonising, which is what the lowercase insertions needed
+("an appropriate angular technique" / "an appropriate vue.js technique" become one template).
+Only subjects of three characters or more are used, so "Go" and "R" never rewrite prose while
+Vue, SQL and PHP still count. The effect is small and consistent, not a range collapse:
+
+| Skeleton recurs at least | Fully templated | Specific text left | Clusters @0.98 | Reducible |
+|---:|---:|---:|---:|---:|
+| 10 times | 20,191 (+96) | 3,763 | 264 | **681** (-65) |
+| 25 times | 18,822 (+203) | 5,132 | 364 | **1,898** (-165) |
+| 50 times | 17,221 (+271) | 6,733 | 449 | **3,356** (-239) |
+
+So the 2,063 default holds to within 8% (1,898), the range narrows from 746-3,595 to 681-3,356
+(6% narrower), and the reason is that subject-slot templates were already caught by the
+capitalised-name rule whenever the generator kept the subject capitalised. What remains is
+free-phrase slots ("in career & behavioral" appears verbatim with the subject inserted
+lowercase), which no simple normaliser catches. Conclusion: quote ~700-1,900, not a point
+estimate, and stop tuning the threshold - the remaining spread is the definition, not a bug.
 
 **17 Nov, repair plan (not started):** the templating is concentrated - the 12 industry
 subjects (Cybersecurity, AI & Data Platforms, HealthTech, Drones, E-Commerce, FinTech,

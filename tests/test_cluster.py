@@ -109,3 +109,29 @@ def test_slot_min_count_makes_slot_filled_rows_fully_templated():
     _, slot_aware = cd.strip_template_sentences(texts, 50, slot_min_count=2)
     assert slot_aware["slot_sentences"] >= 1
     assert slot_aware["rows_fully_templated"] == len(texts)
+
+
+def test_subject_slot_merges_subject_variants_in_any_case():
+    a = "Then I would choose an appropriate angular technique, in small steps."
+    b = "Then I would choose an appropriate vue.js technique, in small steps."
+    assert (cd.sentence_key(a, slot=True, subject="Angular")
+            == cd.sentence_key(b, slot=True, subject="Vue.js"))
+    assert cd.sentence_key(a, slot=True, subject="Angular") != cd.sentence_key(a, slot=True, subject="Java")
+
+
+def test_short_subjects_are_not_used_as_slots():
+    key = cd.sentence_key("I would go home after the fix.", slot=True, subject="Go")
+    assert "<s>" not in key, "a two-letter subject must not rewrite ordinary prose"
+
+
+def test_subject_slot_rows_become_fully_templated():
+    stock = "Then I would choose an appropriate {} technique, implement it in small steps."
+    names = ("angular", "react", "vue", "svelte", "ember", "backbone")
+    texts = [stock.format(n) for n in names]
+    subjects = [n.capitalize() for n in names]
+
+    _, before = cd.strip_template_sentences(texts, 50, slot_min_count=2)
+    assert before["rows_fully_templated"] == 0, "lowercase subject slots are not <x>"
+
+    _, after = cd.strip_template_sentences(texts, 50, slot_min_count=2, subjects=subjects)
+    assert after["rows_fully_templated"] == len(texts)

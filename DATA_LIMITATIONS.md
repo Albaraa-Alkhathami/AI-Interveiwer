@@ -100,25 +100,26 @@ The 5 original gaps were closed with generated questions; Machine Translation (G
 The answers are machine-generated and were not fact-checked.
 
 - No ground-truth answer, rubric or human rating exists anywhere in the file.
-- **18,619 answers (77.7%) contain no unique sentence at all** - every sentence also appears
+- **18,822 answers (78.6%) contain no unique sentence at all** - every sentence also appears
   in dozens or hundreds of other answers. A sentence counts as a template when it recurs
   verbatim 50+ times (300 such sentences) or when its slot-filled skeleton recurs 25+ times
-  (321 skeletons: the generator swaps a step number, a stack name or a figure, so "(2) agree
-  the success measure..." and "(3) agree the success measure..." are one template). One
-  verbatim sentence alone covers 9,091 answers; 5,335 answers keep specific text after both
-  strips. These answers are unusable as worked examples: asked about an Angular `Component`
+  (317 skeletons: the generator swaps a step number, a stack name, a figure or the row's own
+  subject, so "(2) agree the success measure..." and "(3) agree the success measure..." are one
+  template, and so are "an appropriate angular technique" and "an appropriate vue.js
+  technique"). One verbatim sentence alone covers 9,091 answers; 5,132 answers keep specific
+  text after both strips. These answers are unusable as worked examples: asked about an Angular `Component`
   versus `Directive`, the answer says "the first approach generally emphasizes one set of
   trade-offs". The `TEMPLATES` check sees 799 rows because it matches whole-answer boilerplate
   only.
-- **A dedupe would remove roughly 750-2,100 rows, 2,063 at the documented default; a strict
-  threshold puts it as high as 3,595.** The figure depends on how often a slot-filled skeleton
+- **A dedupe would remove roughly 700-1,900 rows, 1,898 at the documented default; a strict
+  threshold puts it as high as 3,356.** The figure depends on how often a slot-filled skeleton
   must recur before it counts as a template, and the dependence is steep:
 
   | Skeleton recurs at least | Fully templated | Specific text left | Clusters @0.98 | Reducible rows |
   |---:|---:|---:|---:|---:|
-  | 10 times | 20,095 (83.9%) | 3,859 | 283 | **746** |
-  | 25 times (default) | 18,619 (77.7%) | 5,335 | 390 | **2,063** |
-  | 50 times | 16,950 (70.8%) | 7,004 | 473 | **3,595** |
+  | 10 times | 20,191 (84.3%) | 3,763 | 264 | **681** |
+  | 25 times (default) | 18,822 (78.6%) | 5,132 | 364 | **1,898** |
+  | 50 times | 17,221 (71.9%) | 6,733 | 449 | **3,356** |
   | no slot handling | 14,708 (61.4%) | 9,246 | 705 | 5,074 |
 
   Both ends fail for opposite reasons. 50 is too strict: the 10-24 band holds 108 skeletons /
@@ -126,15 +127,18 @@ The answers are machine-generated and were not fact-checked.
   contract down in writing: error semantics, idempotency, versioning, rate limits"), so 3,595
   counts real templates as duplicates and overstates. 10 is too loose: a correct explanation
   reused by ten rows is not proof of a generated skeleton, and counting it as one removes
-  genuine duplicates from the total, so 746 is the low end rather than the expected value. 25
+  genuine duplicates from the total, so 681 is the low end rather than the expected value. 25
   is the documented default because it is the point between those two errors where each
   skeleton has recurred across enough questions to be a template and no sentence is counted
   on ten sightings alone. The 5,074 row is an artefact of counting one skeleton once per slot
   value and must not be quoted.
-  Read the range as **746-2,063** rather than up to 3,595: slots the normaliser misses are
-  inserted lowercase ("an appropriate angular technique"), which leaves those sentences in the
-  body, so they look specific and their rows are more likely to be counted as duplicates than
-  as templates. That error inflates the figure, meaning the true value sits at or below 2,063.
+  Read the range as **681-1,898** rather than up to 3,356: slots the normaliser still misses
+  are inserted lowercase or as free phrases ("in career & behavioral"), which leaves those
+  sentences in the body, so they look specific and their rows are more likely to be counted as
+  duplicates than as templates. That error inflates the figure, meaning the true value sits at
+  or below 1,898. Treating the row's own subject as a slot moved the answer by only ~8% (746
+  to 681, 2,063 to 1,898, 3,595 to 3,356), so the range is real rather than a normalisation
+  artefact.
   Reproduce the default with `python cluster_duplicates.py --only answers --slot-min-count 25`;
   `--slot-min-count 0` reproduces the 5,074 artefact.
 - **21,145 answers (88.3%) open with a sentence that appears verbatim in another answer.**

@@ -46,9 +46,19 @@ SLOT = re.compile(
 )
 
 
-def sentence_key(sentence: str, slot: bool = False) -> str:
-    """Casefolded sentence; with slot=True, capitalised names and numbers become <x>."""
-    return (SLOT.sub("<x>", sentence) if slot else sentence).casefold()
+def sentence_key(sentence: str, slot: bool = False, subject: str = "") -> str:
+    """Casefolded sentence; with slot=True, slot values are replaced before counting.
+
+    Capitalised names and numbers become <x>. The row's own subject becomes <s> when it
+    appears in any casing, which catches the generator's lowercase insertions ("an appropriate
+    angular technique"): without it, one template is counted once per subject. Subjects shorter
+    than three characters are left alone - replacing every "go" or "r" would rewrite ordinary
+    prose - while three-letter subjects such as Vue, SQL and PHP are still slots.
+    """
+    text = sentence
+    if subject and len(subject.strip()) >= 3:
+        text = re.sub(rf"\b{re.escape(subject.strip())}\b", "<s>", text, flags=re.IGNORECASE)
+    return (SLOT.sub("<x>", text) if slot else text).casefold()
 
 
 def split_opening(text: str) -> tuple[str | None, str]:
@@ -76,8 +86,8 @@ def opening_stats(texts: list[str], min_count: int) -> dict:
 SENTENCE = re.compile(r"(?<=[.!?])\s+")
 
 
-def strip_template_sentences(texts: list[str], min_count: int,
-                             slot_min_count: int = 0) -> tuple[list[str], dict]:
+def strip_template_sentences(texts: list[str], min_count: int, slot_min_count: int = 0,
+                             subjects: list[str] | None = None) -> tuple[list[str], dict]:
     """Drop every sentence that recurs across the dataset, wherever it sits.
 
     Stripping only the leading sentence was not enough: the template continues into the
@@ -92,20 +102,22 @@ def strip_template_sentences(texts: list[str], min_count: int,
     specific when it is not.
     """
     per_text = [SENTENCE.split(" ".join(t.split())) for t in texts]
+    subject_of = list(subjects) if subjects is not None else [""] * len(texts)
     counts = Counter(s.casefold() for sents in per_text for s in sents if len(s) > 20)
     stock = {s for s, n in counts.items() if n >= min_count}
-    slot_counts = Counter(sentence_key(s, slot=True)
-                          for sents in per_text for s in sents if len(s) > 20)
+    slot_counts = Counter(sentence_key(s, slot=True, subject=subject_of[i])
+                          for i, sents in enumerate(per_text) for s in sents if len(s) > 20)
     slots = {k for k, n in slot_counts.items() if n >= slot_min_count} if slot_min_count else set()
 
-    def is_template(sentence: str) -> bool:
+    def is_template(sentence: str, subject: str) -> bool:
         if len(sentence) <= 20:
             return False
-        return sentence.casefold() in stock or sentence_key(sentence, slot=True) in slots
+        return (sentence.casefold() in stock
+                or sentence_key(sentence, slot=True, subject=subject) in slots)
 
     bodies, keep, removed = [], [], 0
     for i, (text, sents) in enumerate(zip(texts, per_text)):
-        kept = [s for s in sents if not is_template(s)]
+        kept = [s for s in sents if not is_template(s, subject_of[i])]
         body = " ".join(kept).strip()
         removed += max(0, len(text) - len(body))
         if len(body) >= MIN_BODY:
@@ -249,8 +261,9 @@ def main() -> int:
         results += summarise("questions", qtexts, qv, thresholds)
 
     if args.only in (None, "answers"):
-        bodies, strip_info = strip_template_sentences(answers, args.opening_min_count,
-                                                      args.slot_min_count)
+        bodies, strip_info = strip_template_sentences(
+            answers, args.opening_min_count, args.slot_min_count,
+            subjects=[r["subject"] for r in rows])
         print(f"answers    template sentences={strip_info['stock_sentences']:,} "
               f"slot-filled={strip_info['slot_sentences']:,} "
               f"rows_with_specific_text={strip_info['rows_with_specific_text']:,} "
