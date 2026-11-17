@@ -143,6 +143,18 @@ free-phrase slots ("in career & behavioral" appears verbatim with the subject in
 lowercase), which no simple normaliser catches. Conclusion: quote ~700-1,900, not a point
 estimate, and stop tuning the threshold - the remaining spread is the definition, not a bug.
 
+**17 Nov, dedupe pass:** new `dedupe_answers.py` (dry run by default) keeps one representative
+per 0.98 body cluster - longest specific body, ties by dataset order - and never touches
+templated rows. Building it corrected the premise behind the 1,898 figure: the duplicated bodies
+sit on different questions. Of 364 clusters / 2,262 rows, answer scope would delete 1,898 rows
+and remove questions along with their answers (cookies vs `entryComponents`, question cosine
+0.58); subject scope deletes 379; **question scope deletes 29**, which are real paraphrases
+("Tell me about Gwen?" / "Please tell me about Gwen?"). 138/138 cells stay covered, smallest
+cell 1, 17 cells lose rows. Recommendation: apply the 29-row question scope, and treat the other
+~1,869 as rewrite targets for `regenerate_answers.py --only-templated`. Note 29 is the overlap
+of answer- and question-level duplication, not the size of either (question-only was 457 rows at
+0.98). Not applied yet: the user asked to see the impact first.
+
 **17 Nov, repair plan (not started):** the templating is concentrated - the 12 industry
 subjects (Cybersecurity, AI & Data Platforms, HealthTech, Drones, E-Commerce, FinTech,
 Gaming, DefenseTech, AdTech, Logistics, SaaS, FoodTech) hold ~20,300 of the ~21,800 repair

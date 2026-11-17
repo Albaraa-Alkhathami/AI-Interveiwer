@@ -141,6 +141,19 @@ The answers are machine-generated and were not fact-checked.
   artefact.
   Reproduce the default with `python cluster_duplicates.py --only answers --slot-min-count 25`;
   `--slot-min-count 0` reproduces the 5,074 artefact.
+- **Only 29 rows can be deleted; the other ~1,870 duplicated answers sit on different questions.**
+  Grouping the 5,132 answers that still have specific text gives 364 body clusters at 0.98 over
+  2,262 rows. Removing every non-representative row is the 1,898 figure, but those rows mostly
+  answer *different* questions: "Why are first-party cookies and third-party cookies treated so
+  differently?" shares a body with "Why is not necessary to use entryComponents array every
+  time?" at a question cosine of 0.58. Deleting one would remove a question to fix an answer.
+  Scoped properly: 1,898 rows at answer scope, 379 when the row must share its representative's
+  subject, and **29** when the question must also match at 0.98 ("Tell me about Gwen?" vs
+  "Please tell me about Gwen?"). The remaining 1,869 rows are rewrite targets, not duplicates.
+  `python dedupe_answers.py` reports all three scopes and writes nothing; `--apply` removes the
+  chosen scope after keeping the last row of every subject x difficulty cell (138/138 held).
+  Question-level duplication on its own was measured separately at 457 rows / 179 clusters at
+  0.98, so 29 is the overlap of the two defects, not the size of either.
 - **21,145 answers (88.3%) open with a sentence that appears verbatim in another answer.**
   There are about six stock openings, each covering roughly 2,500 rows ("Before choosing a
   direction I would make the trade-off explicit..."). The bodies after them differ - the
