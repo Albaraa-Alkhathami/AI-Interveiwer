@@ -104,8 +104,16 @@ immediately when the retry is made synchronous again and passes on the pooled lo
 drains in-flight work after a quota stop instead of abandoning the chunk.
 
 **17 Nov, slot-aware recount:** treating slot-filled sentences as templates lowers the dedupe
-figure from 5,074 to **2,063 rows** and raises fully-templated answers from 14,708 to 18,619
-(77.7%). The slot is real: `sentence_key(..., slot=True)` strips capitalised names and numbers,
+figure from 5,074 to **746-3,595 rows**, 2,063 at the default of 25 recurrences, and raises
+fully-templated answers from 14,708 to 16,950-20,095. The threshold matters more than any
+single number: skeletons recurring 10+ times leave 746 reducible rows, 25+ leaves 2,063, 50+
+leaves 3,595, each step moving ~1,500 answers into the templated class. 50 is too strict -
+the 10-24 band still holds plainly generated templates (108 skeletons / 1,675 instances,
+"That breaks into these steps: (1) pin the contract down in writing...") - and 10 is too
+loose, since a sentence reused by ten rows may be a correct answer rather than a skeleton.
+Read the range as **746-2,063**: unnormalised lowercase slots ("an appropriate angular
+technique") stay in the body, so those rows read as specific duplicates and inflate the
+figure, which means the true value sits at or below the 25 default. The slot is real: `sentence_key(..., slot=True)` strips capitalised names and numbers,
 so "With Kafka Streams already in place" and "With Apache Flink already in place" become one
 skeleton (1,677 + 385 rows), and "(2)" vs "(3) agree the success measure" collapse too. 300
 verbatim templates plus 321 slot skeletons cover 18,619 answers; the 5,335 rows with text left

@@ -110,15 +110,33 @@ The answers are machine-generated and were not fact-checked.
   versus `Directive`, the answer says "the first approach generally emphasizes one set of
   trade-offs". The `TEMPLATES` check sees 799 rows because it matches whole-answer boilerplate
   only.
-- **A dedupe would remove 2,063 rows, not 5,074.** The 5,335 answers with specific text left
-  still cluster into 390 groups at cosine 0.98 (2,453 rows), so 2,063 rows are near-duplicates
-  of another row and 3,272 are genuinely distinct. The earlier 5,074 figure was inflated by
-  reading slot-filled sentences as specific text and counting one skeleton once per slot
-  value. At 0.95 it is 392 groups / 2,301 rows, which over-merges same-topic prose.
-  Reproduce with `python cluster_duplicates.py --only answers --slot-min-count 25`.
-  Some slots still escape normalisation when the generator inserts them lowercase ("an
-  appropriate angular technique"), so 2,063 is what a dedupe removes from the text as it
-  stands, not a ceiling on how many rows are templated.
+- **A dedupe would remove roughly 750-2,100 rows, 2,063 at the documented default; a strict
+  threshold puts it as high as 3,595.** The figure depends on how often a slot-filled skeleton
+  must recur before it counts as a template, and the dependence is steep:
+
+  | Skeleton recurs at least | Fully templated | Specific text left | Clusters @0.98 | Reducible rows |
+  |---:|---:|---:|---:|---:|
+  | 10 times | 20,095 (83.9%) | 3,859 | 283 | **746** |
+  | 25 times (default) | 18,619 (77.7%) | 5,335 | 390 | **2,063** |
+  | 50 times | 16,950 (70.8%) | 7,004 | 473 | **3,595** |
+  | no slot handling | 14,708 (61.4%) | 9,246 | 705 | 5,074 |
+
+  Both ends fail for opposite reasons. 50 is too strict: the 10-24 band holds 108 skeletons /
+  1,675 instances that are plainly generated ("That breaks into these steps: (1) pin the
+  contract down in writing: error semantics, idempotency, versioning, rate limits"), so 3,595
+  counts real templates as duplicates and overstates. 10 is too loose: a correct explanation
+  reused by ten rows is not proof of a generated skeleton, and counting it as one removes
+  genuine duplicates from the total, so 746 is the low end rather than the expected value. 25
+  is the documented default because it is the point between those two errors where each
+  skeleton has recurred across enough questions to be a template and no sentence is counted
+  on ten sightings alone. The 5,074 row is an artefact of counting one skeleton once per slot
+  value and must not be quoted.
+  Read the range as **746-2,063** rather than up to 3,595: slots the normaliser misses are
+  inserted lowercase ("an appropriate angular technique"), which leaves those sentences in the
+  body, so they look specific and their rows are more likely to be counted as duplicates than
+  as templates. That error inflates the figure, meaning the true value sits at or below 2,063.
+  Reproduce the default with `python cluster_duplicates.py --only answers --slot-min-count 25`;
+  `--slot-min-count 0` reproduces the 5,074 artefact.
 - **21,145 answers (88.3%) open with a sentence that appears verbatim in another answer.**
   There are about six stock openings, each covering roughly 2,500 rows ("Before choosing a
   direction I would make the trade-off explicit..."). The bodies after them differ - the
