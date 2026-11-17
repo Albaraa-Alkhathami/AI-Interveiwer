@@ -97,7 +97,9 @@ the next real run: keep it only if `recovered / spent` exceeds ~85%, otherwise t
 better spent on a fresh target.
 Retries are submitted to the same pool, not called from the consumer thread: an A/B with 8
 targets, 2 workers and a 50 ms fake latency took 0.54 s when the retry blocked the consumer
-and 0.41 s (ideal 0.40 s) once pooled. A call that dies still writes its row, and the loop
+and 0.41 s (ideal 0.40 s) once pooled. The overlap is now asserted without timing: a
+two-party barrier pairs the retry with a target that can only be submitted afterwards, which
+fails on the synchronous loop (5.4 s barrier timeout) and passes on the pooled one (0.28 s). A call that dies still writes its row, and the loop
 drains in-flight work after a quota stop instead of abandoning the chunk.
 
 **17 Nov, after the cap:** a 4-token probe returned 200 with 7,924 tokens "available", so a run

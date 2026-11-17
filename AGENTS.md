@@ -65,6 +65,9 @@ enforces the mechanical ones:
   more than ~85% of rejections; below that, `--no-retry` yields more accepted answers per day.
   Every run prints `corrective retries: N spent, M recovered`, so the two modes can be compared
   on the same dataset instead of argued about.
+- **Retry only what a prompt can fix.** `RETRYABLE` covers invented specifics, banned phrasing,
+  length and unfinished sentences. A duplicate of another generated answer is excluded: the
+  model cannot see the answer it collided with, so asking again returns the same text.
 - **A cheap probe proves authentication, not budget.** A 4-token request can be served on the
   last few hundred tokens of an exhausted day and still return 200; the first real answer then
   fails with `per day`. Do not conclude "the cap has reset" from a probe — this has cost two

@@ -151,6 +151,22 @@ NO_METRICS = (
 )
 
 
+# Only failures a better prompt can actually fix. "duplicate of another generated answer"
+# is excluded on purpose: the model cannot see the other answer, and asking it to "be more
+# specific" reproduces the same text, so that retry buys nothing.
+RETRYABLE = (
+    "still contains a metric or company name",
+    "contains banned phrase",
+    "too short",
+    "too long",
+    "unfinished sentence",
+)
+
+
+def is_retryable(reason: str) -> bool:
+    return reason.startswith(RETRYABLE)
+
+
 def correction_for(reason: str, draft: str, question: str) -> str:
     """Turn a rejection reason into an instruction for one corrective retry.
 
@@ -454,7 +470,11 @@ def main() -> None:
                         reason = validate(new, seen)
                         if not reason and is_suspicious(new, r["question"]):
                             reason = "still contains a metric or company name"
-                        if reason and not args.no_retry and not STOP.is_set()                                 and requests_used < request_budget:
+                        # Only failures a better prompt can fix, and only within budget.
+                        retry_now = (reason and is_retryable(reason)
+                                     and not args.no_retry and not STOP.is_set()
+                                     and requests_used < request_budget)
+                        if retry_now:
                             # Submit the corrective retry rather than calling it here: done
                             # inline, the consumer thread blocks for the length of the call
                             # (or its 429 wait) and every other worker sits idle meanwhile.

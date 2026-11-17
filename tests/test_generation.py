@@ -662,3 +662,73 @@ def test_dead_retry_does_not_abandon_the_rest_of_the_chunk(tmp_path, monkeypatch
     statuses = sorted(r["status"].split(":")[0] for r in rows)
     assert statuses == ["error", "ok"], statuses
     assert "quota hit after" in out
+
+
+def test_retry_overlaps_another_in_flight_call(tmp_path, monkeypatch, capsys):
+    """The retry must run beside the pool, not in front of it.
+
+    A two-party barrier pairs the corrective retry with target 5, which can only be
+    submitted once the retry has been queued. If the retry were called on the consumer
+    thread, target 5 could never start, the barrier would time out, and the retry would
+    be recorded as an error. No timing is involved, so this cannot flake.
+    """
+    import csv as _csv
+    import threading
+
+    path = tmp_path / "combined_dataset.csv"
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        w = _csv.writer(fh)
+        w.writerow(["prompt", "question", "answer", "subject", "difficulty", "data_flag"])
+        for i in range(1, 9):
+            w.writerow(["p", f"Question {i} about failure isolation?", "shared old answer",
+                        "Java", "Easy", ""])
+
+    barrier = threading.Barrier(2, timeout=5)
+
+    def fake(req, timeout=None):
+        user = json.loads(req.data)["messages"][1]["content"]
+        if "rejected by an automated check" in user:
+            barrier.wait()                       # pairs with the late target
+            return completion(GOOD_ANSWER + " I rechecked the isolation boundary.")
+        if "Question 1 about" in user:
+            return completion(BAD_METRIC)         # first target is rejected
+        if "Question 5 about" in user:
+            barrier.wait()                        # only reachable after a refill
+        return completion(GOOD_ANSWER + f" Ref {abs(hash(user)) % 9973}.")
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    rows, out = _run_regenerate(tmp_path, monkeypatch, capsys,
+                                ("--workers", "2", "--max-requests", "20"))
+
+    assert len(rows) == 8, f"not every target was recorded: {len(rows)}"
+    assert not [r for r in rows if r["status"].startswith("error")], \
+        [r["status"] for r in rows if r["status"].startswith("error")]
+    first = next(r for r in rows if "Question 1 about" in r["question"])
+    assert first["status"] == "ok", first["status"]
+    assert "1 recovered" in out
+
+
+def test_duplicate_rejection_is_not_retried(tmp_path, monkeypatch, capsys):
+    """A duplicate cannot be fixed by a prompt the model cannot see, so it is not retried."""
+    _dup_dataset(tmp_path)
+    calls: list[int] = []
+
+    def fake(req, timeout=None):
+        calls.append(1)
+        return completion(GOOD_ANSWER)            # identical text for both targets
+
+    monkeypatch.setattr(ra.urllib.request, "urlopen", fake)
+    rows, out = _run_regenerate(tmp_path, monkeypatch, capsys, ("--limit", "2"))
+
+    assert len(calls) == 2, f"a duplicate rejection was retried: {len(calls)} calls"
+    assert any(r["status"].startswith("rejected: duplicate") for r in rows), \
+        [r["status"] for r in rows]
+    assert not any("; retry:" in r["status"] for r in rows)
+    assert "corrective retries" not in out, "the summary implies a retry was spent"
+
+
+def test_retryable_reasons_are_the_ones_a_prompt_can_fix():
+    assert ra.is_retryable("still contains a metric or company name")
+    assert ra.is_retryable("too short")
+    assert ra.is_retryable("contains banned phrase: 'certainly!'")
+    assert not ra.is_retryable("duplicate of another generated answer")
